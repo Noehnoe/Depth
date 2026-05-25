@@ -1,0 +1,1951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DEPTH</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Courier New", monospace;
+    color: #eee;
+    overflow: hidden;
+  }
+  canvas {
+    background: #000;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    cursor: crosshair;
+    display: block;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="600"></canvas>
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const W = 800, H = 600;
+  const FONT = '"Courier New", monospace';
+
+  // fullscreen scaling: keep 4:3 internal resolution, fit to viewport
+  function resizeCanvas() {
+    const ww = window.innerWidth;
+    const wh = window.innerHeight;
+    const targetAspect = W / H;
+    const winAspect = ww / wh;
+    let dispW, dispH;
+    if (winAspect > targetAspect) {
+      dispH = wh;
+      dispW = wh * targetAspect;
+    } else {
+      dispW = ww;
+      dispH = ww / targetAspect;
+    }
+    canvas.style.width = dispW + 'px';
+    canvas.style.height = dispH + 'px';
+    ctx.imageSmoothingEnabled = false;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // ---------- COLOR PALETTE ----------
+  const C = {
+    // sky
+    skyTop: '#0a0a1f',
+    skyMid: '#1a1538',
+    skyBot: '#3a2a4a',
+    moon: '#e8e0c0',
+    moonShade: '#a89c70',
+    star: '#cccccc',
+    starDim: '#605078',
+
+    // mountains
+    mtnFar: '#2a2540',
+    mtnMid: '#1d1830',
+    mtnNear: '#15101e',
+
+    // trees
+    treeDark: '#0a1810',
+    treeMid: '#15301c',
+
+    // ground
+    grassTop: '#3a5a2a',
+    grassDark: '#26401e',
+    dirtTop: '#5a3a22',
+    dirtMid: '#3e2614',
+    dirtDeep: '#22140a',
+
+    // base
+    baseRoof: '#a83828',
+    baseRoofShadow: '#682018',
+    baseWall: '#8a5a36',
+    baseWallShadow: '#5a3820',
+    baseWindow: '#ffdf6f',
+    baseWindowFrame: '#3a2010',
+    baseDoor: '#3a1f10',
+
+    // shop
+    shopRoof: '#3a2858',
+    shopWall: '#5a3878',
+    shopWallShadow: '#3a2050',
+    shopWindow: '#ff80c8',
+    shopSign: '#1a0820',
+    shopSignText: '#ffe04a',
+    shopNeon: '#ff70d0',
+
+    // hole
+    holeFrame: '#5a3820',
+    holeFrameDark: '#2a1810',
+    holeDark: '#000',
+
+    // shaft walls
+    wallA: '#3a2818',
+    wallB: '#2e1f12',
+    wallShadow: '#15100a',
+    wallHighlight: '#5a3a22',
+    wallSupport: '#6a4828',
+    wallSupportDark: '#3a2614',
+
+    // miner
+    helmet: '#f0c020',
+    helmetShade: '#a88010',
+    helmetBand: '#1a1410',
+    lamp: '#fff8c0',
+    lampGlow: '#ffec70',
+    skin: '#e8b888',
+    skinShade: '#a87856',
+    overalls: '#3858a8',
+    overallsShade: '#1f3878',
+    shirt: '#d04030',
+    boots: '#2a1610',
+    pickaxe: '#888',
+    pickaxeHandle: '#6a4828',
+
+    // ui
+    hudBg: 'rgba(10,5,20,0.78)',
+    hudBorder: '#5a3aa0',
+    hudBorderDark: '#2a1c5a',
+    coin: '#ffd040',
+    coinShade: '#aa7820',
+    textMain: '#fff',
+    textDim: '#aaa8c8',
+    textHi: '#7fffa0',
+    textWarn: '#ff5a5a',
+  };
+
+  // ---------- INPUT ----------
+  const keys = {};
+  const justPressed = {};
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (!keys[k]) justPressed[k] = true;
+    keys[k] = true;
+    if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.key.toLowerCase()] = false;
+  });
+
+  const mouse = { x: 0, y: 0, down: false, clicked: false };
+  canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - r.left) * (W / r.width);
+    mouse.y = (e.clientY - r.top) * (H / r.height);
+  });
+  canvas.addEventListener('mousedown', e => { mouse.down = true; mouse.clicked = true; });
+  canvas.addEventListener('mouseup', e => { mouse.down = false; });
+
+  function input(name) { return keys[name]; }
+
+  // ---------- GAME STATE ----------
+  const SURFACE_GROUND_Y = 460;
+  const WORLD_WIDTH = 1000;
+  const BASE_X = 80, BASE_W = 130, BASE_H = 130;
+  const HOLE_X = 430, HOLE_W = 120;
+  const SHOP_X = 760, SHOP_W = 140, SHOP_H = 140;
+  const SHAFT_LEFT = 280;
+  const SHAFT_RIGHT = 520;
+  const PLAYER_SHAFT_Y = 240;
+
+  const ORE_TYPES = {
+    coal:    { color: '#3a3a3a', edge: '#1a1a1a', spec: '#6a6a6a', glow: null,      value: 1,  name: 'COAL' },
+    copper:  { color: '#d06820', edge: '#7a3a10', spec: '#ff9858', glow: null,      value: 3,  name: 'COPPER' },
+    iron:    { color: '#a8b8c8', edge: '#5868a0', spec: '#e0f0ff', glow: null,      value: 7,  name: 'IRON' },
+    gold:    { color: '#f0c040', edge: '#a8801a', spec: '#fff8a0', glow: '#fff080', value: 15, name: 'GOLD' },
+    crystal: { color: '#40e8e8', edge: '#1090a0', spec: '#e0ffff', glow: '#80fff0', value: 35, name: 'CRYSTAL' },
+  };
+
+  const game = {
+    scene: 'title',
+    money: 40,
+    player: {
+      x: 240, y: SURFACE_GROUND_Y - 32,
+      vx: 0, vy: 0,
+      w: 16, h: 32,
+      onGround: false,
+      facing: 1,
+      walkPhase: 0,
+      bobPhase: 0,
+      limp: 0,
+      blinkTimer: 0,
+      blink: false,
+    },
+    cameraX: 0,
+    depth: 0,
+    maxDepth: 0,
+    descentSpeedBase: 28,
+    weights: 0,
+    oxygenMax: 100,
+    oxygen: 100,
+    carried: [],
+    carriedMax: 12,
+    placed: new Array(12).fill(null),
+    oreClusters: [],
+    lastClusterDepth: 0,
+    particles: [],
+    dustParticles: [],
+    milestones: { 200: false, 500: false, 900: false, 1400: false },
+    milestoneMsg: null,
+    screenShake: 0,
+    weightPrice: 15,
+    oxygenPrice: 25,
+    wallPushTimer: { left: 0, right: 0 },
+    timeAcc: 0,
+    titleFlash: 0,
+  };
+
+  function currentDescentSpeed() {
+    return game.descentSpeedBase * Math.pow(0.95, game.weights);
+  }
+
+  function passiveIncome() {
+    let s = 0;
+    for (const o of game.placed) if (o) s += ORE_TYPES[o].value;
+    return s;
+  }
+
+  function placeBestOres() {
+    const pool = [...game.carried];
+    for (const o of game.placed) if (o) pool.push(o);
+    pool.sort((a, b) => ORE_TYPES[b].value - ORE_TYPES[a].value);
+    game.placed = new Array(12).fill(null);
+    for (let i = 0; i < 12 && i < pool.length; i++) game.placed[i] = pool[i];
+    const leftover = pool.slice(12);
+    game.carried = leftover.slice(0, game.carriedMax);
+  }
+
+  // ---------- ORE GENERATION ----------
+  function maybeGenerateOres() {
+    while (game.lastClusterDepth + 50 <= game.depth + 200) {
+      game.lastClusterDepth += 50;
+      const d = game.lastClusterDepth;
+      const tiers = [];
+      if (d < 200) tiers.push(['coal', 1]);
+      else if (d < 500) tiers.push(['coal', 0.4], ['copper', 1]);
+      else if (d < 900) tiers.push(['coal', 0.2], ['copper', 0.5], ['iron', 1]);
+      else if (d < 1400) tiers.push(['coal', 0.1], ['copper', 0.25], ['iron', 0.5], ['gold', 1]);
+      else tiers.push(['coal', 0.05], ['copper', 0.15], ['iron', 0.3], ['gold', 0.6], ['crystal', 1]);
+      let total = 0; for (const t of tiers) total += t[1];
+      let r = Math.random() * total;
+      let type = tiers[0][0];
+      for (const t of tiers) { r -= t[1]; if (r <= 0) { type = t[0]; break; } }
+      const side = Math.random() < 0.5 ? 'left' : 'right';
+      const count = 3 + Math.floor(Math.random() * 4);
+      const ores = [];
+      for (let i = 0; i < count; i++) {
+        // ox: how much the ore sticks out (small range so it always pokes into the shaft)
+        const ox = (Math.random() * 4) | 0;
+        const oy = i * 8 + (Math.random() * 2 | 0);
+        ores.push({ ox, oy, collected: false });
+      }
+      game.oreClusters.push({ depth: d, side, type, ores });
+    }
+    game.oreClusters = game.oreClusters.filter(c => c.depth > game.depth - 400);
+  }
+
+  // ---------- PARTICLES ----------
+  function spawnParticles(x, y, color, n = 6) {
+    for (let i = 0; i < n; i++) {
+      game.particles.push({
+        x, y,
+        vx: (Math.random() - 0.5) * 5,
+        vy: (Math.random() - 0.5) * 5 - 1.5,
+        life: 14 + (Math.random() * 6) | 0,
+        maxLife: 14,
+        color,
+        size: 2 + ((Math.random() * 2) | 0),
+      });
+    }
+  }
+
+  function spawnDust() {
+    if (game.dustParticles.length > 40) return;
+    if (Math.random() < 0.3) {
+      game.dustParticles.push({
+        x: SHAFT_LEFT + Math.random() * (SHAFT_RIGHT - SHAFT_LEFT),
+        y: -10,
+        vy: 0.5 + Math.random() * 1.5,
+        vx: (Math.random() - 0.5) * 0.3,
+        life: 60 + Math.random() * 60,
+        alpha: 0.2 + Math.random() * 0.3,
+      });
+    }
+  }
+
+  function updateParticles() {
+    for (const p of game.particles) {
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.35;
+      p.vx *= 0.92;
+      p.life--;
+    }
+    game.particles = game.particles.filter(p => p.life > 0);
+
+    for (const d of game.dustParticles) {
+      d.x += d.vx;
+      d.y += d.vy;
+      d.life--;
+    }
+    game.dustParticles = game.dustParticles.filter(d => d.life > 0 && d.y < H + 10);
+  }
+
+  function drawParticles(camX = 0, camY = 0) {
+    for (const p of game.particles) {
+      const a = Math.min(1, p.life / 12);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.fillRect((p.x - camX) | 0, (p.y - camY) | 0, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawDust() {
+    for (const d of game.dustParticles) {
+      ctx.globalAlpha = d.alpha * Math.min(1, d.life / 60);
+      ctx.fillStyle = '#8a7c70';
+      ctx.fillRect(d.x | 0, d.y | 0, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- DRAW HELPERS ----------
+  function pixelText(text, x, y, size = 10, color = '#fff', align = 'left', shadow = true) {
+    ctx.font = `bold ${size}px ${FONT}`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'top';
+    if (shadow) {
+      ctx.fillStyle = '#000';
+      ctx.fillText(text, (x | 0) + 1, (y | 0) + 1);
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(text, x | 0, y | 0);
+  }
+
+  function panel(x, y, w, h, fill = C.hudBg, border = C.hudBorder, borderDark = C.hudBorderDark) {
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+    // outer border
+    ctx.fillStyle = border;
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    ctx.fillRect(x + w - 2, y, 2, h);
+    // corner shading (darker)
+    ctx.fillStyle = borderDark;
+    ctx.fillRect(x, y, 2, 2);
+    ctx.fillRect(x + w - 2, y, 2, 2);
+    ctx.fillRect(x, y + h - 2, 2, 2);
+    ctx.fillRect(x + w - 2, y + h - 2, 2, 2);
+  }
+
+  function button(x, y, w, h, label, enabled = true) {
+    const hovered = mouse.x >= x && mouse.x <= x + w && mouse.y >= y && mouse.y <= y + h;
+    const pressed = hovered && mouse.down && enabled;
+    let bg = enabled ? (hovered ? '#3a2a6a' : '#1a1430') : '#0e0a1a';
+    let border = enabled ? (hovered ? '#a880ff' : '#5a3aa0') : '#2a2438';
+    let fg = enabled ? (hovered ? '#fff' : '#e8e0ff') : '#555';
+    ctx.fillStyle = bg;
+    ctx.fillRect(x, y, w, h);
+    // border
+    ctx.fillStyle = border;
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    ctx.fillRect(x + w - 2, y, 2, h);
+    // top highlight
+    if (enabled && !pressed) {
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.fillRect(x + 2, y + 2, w - 4, 2);
+    }
+    pixelText(label, x + w / 2, y + h / 2 - 6, 12, fg, 'center');
+    return enabled && hovered && mouse.clicked;
+  }
+
+  // ---------- MINER SPRITE ----------
+  // 16 wide x 32 tall, drawn programmatically.
+  // facing: -1 or 1
+  // mode: 'surface' or 'shaft'
+  // walkPhase: number for leg cycle
+  function drawMiner(x, y, opts = {}) {
+    const {
+      walkPhase = 0,
+      facing = 1,
+      idleBob = 0,
+      carryCount = 0,
+      limp = 0,
+      mode = 'surface',
+      mining = false,
+      ascending = false,
+      blink = false,
+    } = opts;
+    ctx.save();
+    // pixel grid origin at x,y (top-left bounding box)
+    const f = facing;
+    const yo = idleBob;
+    const px = (px_, py_, w, h, color) => {
+      ctx.fillStyle = color;
+      if (f === -1) {
+        ctx.fillRect((x + 16 - px_ - w) | 0, (y + py_ + yo) | 0, w, h);
+      } else {
+        ctx.fillRect((x + px_) | 0, (y + py_ + yo) | 0, w, h);
+      }
+    };
+
+    if (limp > 0) {
+      // collapsed body — drawn flat
+      // helmet
+      px(2, 18, 6, 4, C.helmet);
+      px(2, 17, 6, 1, C.helmetBand);
+      // head
+      px(8, 18, 4, 4, C.skin);
+      // body
+      px(3, 23, 9, 4, C.overalls);
+      // legs splayed
+      px(4, 27, 3, 2, C.boots);
+      px(9, 27, 3, 2, C.boots);
+      // lamp dim
+      px(0, 20, 2, 1, C.lampGlow);
+      ctx.restore();
+      return;
+    }
+
+    // ---- HELMET ----
+    // helmet dome (8 wide, 4 tall)
+    px(4, 1, 8, 4, C.helmet);
+    // helmet top highlight
+    px(5, 1, 6, 1, '#fff080');
+    // helmet brim
+    px(3, 5, 10, 1, C.helmet);
+    px(3, 6, 10, 1, C.helmetShade);
+    // helmet band
+    px(4, 4, 8, 1, C.helmetBand);
+    // headlamp on front
+    if (f === 1) {
+      px(11, 3, 2, 2, C.lampGlow);
+      px(13, 3, 1, 2, C.lamp);
+    } else {
+      // flipped via px function — passing position from left
+      px(11, 3, 2, 2, C.lampGlow);
+      px(13, 3, 1, 2, C.lamp);
+    }
+
+    // ---- FACE ----
+    px(5, 7, 6, 3, C.skin);
+    // jaw shadow
+    px(5, 10, 6, 1, C.skinShade);
+    // eye (one side based on facing)
+    if (!blink) {
+      px(9, 8, 1, 1, '#1a1410');
+    } else {
+      px(9, 8, 2, 1, '#1a1410');
+    }
+    // cheek
+    px(8, 9, 1, 1, C.skinShade);
+
+    // ---- BODY ----
+    // overalls main (4-10y across, 11-22y down)
+    px(4, 11, 8, 10, C.overalls);
+    // shirt collar
+    px(5, 11, 6, 1, C.shirt);
+    // overall strap shading
+    px(5, 12, 1, 4, C.overallsShade);
+    px(10, 12, 1, 4, C.overallsShade);
+    // pocket
+    px(7, 16, 2, 3, C.overallsShade);
+    // belt
+    px(4, 19, 8, 1, '#1a0e08');
+    px(7, 19, 2, 1, C.helmet);
+
+    // ---- ARMS ----
+    // arm swing for walking
+    const armSwing = Math.sin(walkPhase) * 2;
+    let armBackY = 13;
+    let armFrontY = 13;
+    if (mode === 'surface') {
+      armBackY = 13 + armSwing;
+      armFrontY = 13 - armSwing;
+    } else if (mode === 'shaft') {
+      if (mining) {
+        // pickaxe swing
+        armFrontY = 11 + Math.abs(Math.sin(walkPhase * 2)) * 2;
+      }
+      if (ascending) {
+        armFrontY = 10;
+        armBackY = 10;
+      }
+    }
+    // arms hold close when carrying many
+    const armX = carryCount > 6 ? 3 : 2;
+    // back arm
+    px(2, armBackY, 2, 5, C.shirt);
+    px(2, armBackY + 5, 2, 1, C.skin);
+    // front arm
+    px(12, armFrontY, 2, 5, C.shirt);
+    px(12, armFrontY + 5, 2, 1, C.skin);
+
+    // ---- PICKAXE in shaft ----
+    if (mode === 'shaft') {
+      // handle
+      px(13, armFrontY - 2, 1, 6, C.pickaxeHandle);
+      // head
+      px(11, armFrontY - 3, 5, 1, C.pickaxe);
+      px(11, armFrontY - 4, 5, 1, '#aaa');
+      px(11, armFrontY - 2, 1, 1, '#666');
+      px(15, armFrontY - 2, 1, 1, '#666');
+    }
+
+    // ---- LEGS ----
+    const legSwing = Math.sin(walkPhase) * 3;
+    const lLegOff = (mode === 'surface') ? legSwing : 0;
+    const rLegOff = (mode === 'surface') ? -legSwing : 0;
+    // left leg
+    px(5, 21, 2, 7 + Math.round(lLegOff * 0.2), C.overalls);
+    px(5, 21, 1, 7, C.overallsShade);
+    // right leg
+    px(9, 21, 2, 7 + Math.round(rLegOff * 0.2), C.overalls);
+    px(10, 21, 1, 7, C.overallsShade);
+    // boots
+    px(4, 28, 4, 3, C.boots);
+    px(8, 28, 4, 3, C.boots);
+    px(4, 28, 4, 1, '#000');
+    px(8, 28, 4, 1, '#000');
+
+    ctx.restore();
+  }
+
+  // ---------- LIGHT CONE (shaft helmet lamp) ----------
+  function drawLightCone(cx, cy, facing) {
+    // soft radial glow + cone
+    const grd = ctx.createRadialGradient(cx, cy, 5, cx, cy, 110);
+    grd.addColorStop(0, 'rgba(255,236,140,0.45)');
+    grd.addColorStop(0.4, 'rgba(255,200,100,0.18)');
+    grd.addColorStop(1, 'rgba(255,200,100,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+
+    // forward cone
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (facing < 0) ctx.scale(-1, 1);
+    const cg = ctx.createLinearGradient(0, 0, 140, 0);
+    cg.addColorStop(0, 'rgba(255,236,140,0.35)');
+    cg.addColorStop(1, 'rgba(255,200,100,0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(140, -60);
+    ctx.lineTo(140, 60);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---------- SURFACE UPDATE ----------
+  function updateSurface(dt) {
+    const p = game.player;
+    const ACC = 1.2, MAX_VX = 4, FRICTION = 0.75;
+    let movingX = false;
+    if (input('a') || input('arrowleft')) { p.vx -= ACC; p.facing = -1; movingX = true; }
+    if (input('d') || input('arrowright')) { p.vx += ACC; p.facing = 1; movingX = true; }
+    if (!movingX) p.vx *= FRICTION;
+    p.vx = Math.max(-MAX_VX, Math.min(MAX_VX, p.vx));
+    if (Math.abs(p.vx) < 0.1) p.vx = 0;
+
+    if ((input('w') || input('arrowup') || input(' ')) && p.onGround) {
+      const intoBase = p.x + p.w > BASE_X && p.x < BASE_X + BASE_W;
+      const intoShop = p.x + p.w > SHOP_X && p.x < SHOP_X + SHOP_W;
+      if (!(intoBase && (input('w') || input('arrowup'))) && !(intoShop && (input('w') || input('arrowup')))) {
+        p.vy = -9;
+        p.onGround = false;
+      }
+    }
+
+    p.vy += 0.6;
+    p.x += p.vx;
+    p.y += p.vy;
+
+    if (p.y + p.h >= SURFACE_GROUND_Y) {
+      p.y = SURFACE_GROUND_Y - p.h;
+      p.vy = 0;
+      p.onGround = true;
+    } else {
+      p.onGround = false;
+    }
+
+    if (p.x < 10) { p.x = 10; p.vx = 0; }
+    if (p.x + p.w > WORLD_WIDTH - 10) { p.x = WORLD_WIDTH - 10 - p.w; p.vx = 0; }
+
+    if (Math.abs(p.vx) > 0.5) p.walkPhase += 0.5; else p.walkPhase *= 0.7;
+    p.bobPhase += dt;
+
+    // blink
+    p.blinkTimer += dt;
+    if (p.blinkTimer > 3) { p.blink = true; if (p.blinkTimer > 3.15) { p.blink = false; p.blinkTimer = 0; } }
+
+    game.cameraX = p.x + p.w / 2 - W / 2;
+    game.cameraX = Math.max(0, Math.min(WORLD_WIDTH - W, game.cameraX));
+
+    const pcx = p.x + p.w / 2;
+    if ((input('w') || input('arrowup')) && p.onGround) {
+      if (pcx >= BASE_X && pcx <= BASE_X + BASE_W) {
+        game.scene = 'base';
+      } else if (pcx >= SHOP_X && pcx <= SHOP_X + SHOP_W) {
+        game.scene = 'shop';
+      }
+    }
+
+    if ((input('s') || input('arrowdown')) && p.onGround) {
+      if (pcx >= HOLE_X && pcx <= HOLE_X + HOLE_W) {
+        enterShaft();
+      }
+    }
+  }
+
+  function enterShaft() {
+    game.scene = 'shaft';
+    game.player.x = (SHAFT_LEFT + SHAFT_RIGHT) / 2 - game.player.w / 2;
+    game.player.y = 100;
+    game.player.vx = 0;
+    game.player.vy = 0;
+    game.depth = 0;
+    game.oxygen = game.oxygenMax;
+    game.lastClusterDepth = 0;
+    game.oreClusters = [];
+    game.particles = [];
+    game.dustParticles = [];
+    game.milestones = { 200: false, 500: false, 900: false, 1400: false };
+    maybeGenerateOres();
+  }
+
+  function exitShaftToSurface() {
+    game.scene = 'surface';
+    game.player.x = HOLE_X + HOLE_W / 2 - game.player.w / 2;
+    game.player.y = SURFACE_GROUND_Y - game.player.h;
+    game.player.vx = 0;
+    game.player.vy = 0;
+  }
+
+  // ---------- SHAFT UPDATE ----------
+  function updateShaft(dt) {
+    const p = game.player;
+    const ACC = 0.45;
+    const MAX_VX = 3;
+    let pushingLeft = false, pushingRight = false;
+    if (input('a') || input('arrowleft')) { p.vx -= ACC; p.facing = -1; pushingLeft = true; }
+    if (input('d') || input('arrowright')) { p.vx += ACC; p.facing = 1; pushingRight = true; }
+    p.vx *= 0.95;
+    if (p.vx > MAX_VX) p.vx = MAX_VX;
+    if (p.vx < -MAX_VX) p.vx = -MAX_VX;
+
+    p.x += p.vx;
+
+    const interiorLeft = SHAFT_LEFT + 8;
+    const interiorRight = SHAFT_RIGHT - 8 - p.w;
+    if (p.x < interiorLeft) { p.x = interiorLeft; p.vx = 0; }
+    if (p.x > interiorRight) { p.x = interiorRight; p.vx = 0; }
+
+    const onLeftWall = p.x <= interiorLeft + 0.5;
+    const onRightWall = p.x >= interiorRight - 0.5;
+    if (onLeftWall && pushingLeft) game.wallPushTimer.left = Math.min(1, game.wallPushTimer.left + dt);
+    else if (!onLeftWall) game.wallPushTimer.left = 0;
+    else if (onLeftWall && !pushingLeft && game.wallPushTimer.left > 0.1) {
+      p.vx = 3.5;
+      game.wallPushTimer.left = 0;
+    }
+    if (onRightWall && pushingRight) game.wallPushTimer.right = Math.min(1, game.wallPushTimer.right + dt);
+    else if (!onRightWall) game.wallPushTimer.right = 0;
+    else if (onRightWall && !pushingRight && game.wallPushTimer.right > 0.1) {
+      p.vx = -3.5;
+      game.wallPushTimer.right = 0;
+    }
+
+    const descentSpeed = currentDescentSpeed();
+    const ascending = input('w') || input('arrowup');
+    let verticalSpeed = ascending ? -descentSpeed * 0.6 : descentSpeed;
+    game.depth += verticalSpeed * dt;
+    if (game.depth < 0) { game.depth = 0; exitShaftToSurface(); return; }
+    if (game.depth > game.maxDepth) game.maxDepth = game.depth;
+
+    game.oxygen -= 4 * dt;
+    if (game.oxygen <= 0) { game.oxygen = 0; die(); return; }
+
+    if (Math.abs(p.vx) > 0.5) p.walkPhase += 0.5; else p.walkPhase *= 0.7;
+
+    maybeGenerateOres();
+    spawnDust();
+
+    // Find ores in grab range; collect on SPACE
+    const px2 = p.x + p.w / 2;
+    const py2 = PLAYER_SHAFT_Y + p.h / 2;
+    const grabRangeX = 28, grabRangeY = 22;
+    game.grabbable = [];
+    for (const c of game.oreClusters) {
+      const baseScreenY = (c.depth - game.depth) + PLAYER_SHAFT_Y;
+      if (baseScreenY < -50 || baseScreenY > H + 50) continue;
+      for (const o of c.ores) {
+        if (o.collected) continue;
+        const wallX = c.side === 'left' ? SHAFT_LEFT - 4 + o.ox : SHAFT_RIGHT - 6 + o.ox;
+        const sy = baseScreenY + o.oy;
+        const dx = (wallX + 3) - px2;
+        const dy = (sy + 3) - py2;
+        if (Math.abs(dx) < grabRangeX && Math.abs(dy) < grabRangeY) {
+          game.grabbable.push({ ore: o, cluster: c, sx: wallX, sy });
+        }
+      }
+    }
+    if (justPressed[' '] && game.grabbable.length > 0) {
+      for (const g of game.grabbable) {
+        if (game.carried.length >= game.carriedMax) break;
+        g.ore.collected = true;
+        game.carried.push(g.cluster.type);
+        spawnParticles(g.sx + 3, g.sy + 3, ORE_TYPES[g.cluster.type].spec, 7);
+        spawnParticles(g.sx + 3, g.sy + 3, ORE_TYPES[g.cluster.type].color, 4);
+      }
+    }
+
+    for (const m of [200, 500, 900, 1400]) {
+      if (!game.milestones[m] && game.depth >= m) {
+        game.milestones[m] = true;
+        const msgs = {
+          200: 'DEEPER...',
+          500: "IT'S GETTING DARK",
+          900: 'THE PRESSURE BUILDS',
+          1400: 'CRYSTAL DEPTHS',
+        };
+        game.milestoneMsg = { text: msgs[m], time: 2.2, maxTime: 2.2 };
+      }
+    }
+    if (game.milestoneMsg) {
+      game.milestoneMsg.time -= dt;
+      if (game.milestoneMsg.time <= 0) game.milestoneMsg = null;
+    }
+  }
+
+  function die() {
+    game.carried = [];
+    game.scene = 'dead';
+    game.player.limp = 1;
+    game.screenShake = 14;
+  }
+
+  // ---------- DRAW SURFACE ----------
+  function drawSurface() {
+    // sky gradient (stripes for pixel feel)
+    const skyBands = [
+      [0, '#0a0820'],
+      [80, '#15123a'],
+      [160, '#26204a'],
+      [240, '#3a2c5a'],
+      [320, '#5a3a6a'],
+      [400, '#7a4860'],
+    ];
+    for (let i = 0; i < skyBands.length; i++) {
+      const [y0, color] = skyBands[i];
+      const y1 = i + 1 < skyBands.length ? skyBands[i + 1][0] : SURFACE_GROUND_Y;
+      ctx.fillStyle = color;
+      ctx.fillRect(0, y0, W, y1 - y0);
+    }
+
+    // moon
+    const moonX = 640, moonY = 80;
+    ctx.fillStyle = C.moon;
+    ctx.fillRect(moonX, moonY, 40, 40);
+    ctx.fillRect(moonX - 4, moonY + 4, 4, 32);
+    ctx.fillRect(moonX + 40, moonY + 4, 4, 32);
+    ctx.fillRect(moonX + 4, moonY - 4, 32, 4);
+    ctx.fillRect(moonX + 4, moonY + 40, 32, 4);
+    // moon craters
+    ctx.fillStyle = C.moonShade;
+    ctx.fillRect(moonX + 10, moonY + 10, 6, 4);
+    ctx.fillRect(moonX + 22, moonY + 22, 8, 4);
+    ctx.fillRect(moonX + 8, moonY + 26, 4, 4);
+    // moon glow
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = C.moon;
+    ctx.fillRect(moonX - 16, moonY - 16, 72, 72);
+    ctx.globalAlpha = 1;
+
+    // stars (deterministic positions, twinkle by time)
+    for (let i = 0; i < 60; i++) {
+      const sx = ((i * 137) % W);
+      const sy = ((i * 53) % 280);
+      // skip if near moon
+      if (sx > moonX - 20 && sx < moonX + 60 && sy > moonY - 20 && sy < moonY + 60) continue;
+      const twinkle = ((Math.floor(game.timeAcc * 4) + i) % 7 === 0);
+      ctx.fillStyle = twinkle ? C.star : C.starDim;
+      ctx.fillRect(sx, sy, twinkle ? 2 : 1, twinkle ? 2 : 1);
+    }
+
+    const camX = game.cameraX;
+
+    // parallax mountains (3 layers)
+    drawMountains(0.2, 320, C.mtnFar, camX);
+    drawMountains(0.4, 360, C.mtnMid, camX);
+    drawMountains(0.6, 400, C.mtnNear, camX);
+
+    // distant trees on horizon (parallax)
+    drawTreeRow(0.7, 390, camX);
+
+    // ground (dirt under grass)
+    ctx.fillStyle = C.dirtMid;
+    ctx.fillRect(0, SURFACE_GROUND_Y + 6, W, H - SURFACE_GROUND_Y - 6);
+    // dirt darker stripes
+    ctx.fillStyle = C.dirtDeep;
+    ctx.fillRect(0, SURFACE_GROUND_Y + 30, W, 4);
+    ctx.fillRect(0, SURFACE_GROUND_Y + 60, W, 6);
+    ctx.fillRect(0, SURFACE_GROUND_Y + 100, W, 8);
+    // grass top
+    ctx.fillStyle = C.grassTop;
+    ctx.fillRect(0, SURFACE_GROUND_Y, W, 6);
+    // grass tufts
+    for (let x = 0; x < WORLD_WIDTH; x += 14) {
+      const sx = x - camX;
+      if (sx > -16 && sx < W + 16) {
+        ctx.fillStyle = C.grassDark;
+        const tuftH = 2 + ((x * 17) % 3);
+        ctx.fillRect(sx | 0, SURFACE_GROUND_Y - tuftH, 2, tuftH);
+        if ((x % 28) === 0) {
+          ctx.fillStyle = C.grassTop;
+          ctx.fillRect((sx + 4) | 0, SURFACE_GROUND_Y - 1, 1, 1);
+        }
+      }
+    }
+    // small pebbles in dirt
+    for (let i = 0; i < 30; i++) {
+      const px = (i * 71) % WORLD_WIDTH - camX;
+      const py = SURFACE_GROUND_Y + 14 + ((i * 23) % 80);
+      if (px > -4 && px < W) {
+        ctx.fillStyle = i % 2 ? C.dirtTop : C.dirtDeep;
+        ctx.fillRect(px | 0, py | 0, 2, 2);
+      }
+    }
+    // fence in middle of path
+    // base & shop
+    drawBase(BASE_X - camX, SURFACE_GROUND_Y - BASE_H);
+    drawShop(SHOP_X - camX, SURFACE_GROUND_Y - SHOP_H);
+    drawHole(HOLE_X - camX, SURFACE_GROUND_Y);
+
+    // sign near hole
+    drawSign(HOLE_X - camX - 80, SURFACE_GROUND_Y - 40, 'MINE');
+
+    // player
+    const p = game.player;
+    const idleBob = (Math.abs(p.vx) < 0.5 && p.onGround) ? Math.round(Math.sin(p.bobPhase * 4) * 1) : 0;
+    drawMiner(p.x - camX, p.y, {
+      walkPhase: p.walkPhase,
+      facing: p.facing,
+      idleBob,
+      carryCount: game.carried.length,
+      mode: 'surface',
+      blink: p.blink,
+    });
+
+    drawParticles(camX, 0);
+    drawSurfaceHUD();
+  }
+
+  function drawMountains(parallax, baseY, color, camX) {
+    const off = (camX * parallax) | 0;
+    ctx.fillStyle = color;
+    // pixelated mountain silhouette
+    const peaks = [
+      0, 20, 60, 0, 40, 80, 30, 0, 50, 70, 20, 60, 100, 40, 10, 60, 30, 0, 90, 40, 60, 20, 80, 30, 60
+    ];
+    const step = 60;
+    ctx.beginPath();
+    ctx.moveTo(-50, SURFACE_GROUND_Y);
+    for (let i = 0; i < peaks.length; i++) {
+      const x = i * step - (off % step);
+      const y = baseY - peaks[i];
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W + 50, SURFACE_GROUND_Y);
+    ctx.closePath();
+    ctx.fill();
+    // pixel ridge highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    for (let i = 0; i < peaks.length; i++) {
+      const x = i * step - (off % step);
+      const y = baseY - peaks[i];
+      ctx.fillRect(x, y, 2, 4);
+    }
+  }
+
+  function drawTreeRow(parallax, baseY, camX) {
+    const off = (camX * parallax) | 0;
+    for (let i = 0; i < 30; i++) {
+      const tx = i * 70 - (off % 70);
+      // tree
+      ctx.fillStyle = C.treeDark;
+      ctx.fillRect(tx + 7, baseY - 2, 2, 4);
+      // pine triangle
+      for (let r = 0; r < 5; r++) {
+        const w = 14 - r * 2;
+        ctx.fillRect(tx + 2 + r, baseY - 4 - r * 4, w, 4);
+      }
+      ctx.fillStyle = C.treeMid;
+      for (let r = 0; r < 5; r++) {
+        const w = 14 - r * 2;
+        ctx.fillRect(tx + 2 + r, baseY - 4 - r * 4, 2, 4);
+      }
+    }
+  }
+
+  function drawSign(x, y, text) {
+    // post
+    ctx.fillStyle = '#3a2010';
+    ctx.fillRect(x + 14, y + 14, 4, 24);
+    // board
+    ctx.fillStyle = '#6a4828';
+    ctx.fillRect(x, y, 32, 16);
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(x, y, 32, 2);
+    ctx.fillRect(x, y + 14, 32, 2);
+    ctx.fillRect(x, y, 2, 16);
+    ctx.fillRect(x + 30, y, 2, 16);
+    pixelText(text, x + 16, y + 4, 9, '#ffe080', 'center', false);
+  }
+
+  function drawBase(x, y) {
+    // chimney
+    ctx.fillStyle = '#3a2614';
+    ctx.fillRect(x + BASE_W - 36, y - 30, 14, 30);
+    ctx.fillStyle = '#5a3a22';
+    ctx.fillRect(x + BASE_W - 36, y - 30, 14, 2);
+    // chimney smoke
+    const t = game.timeAcc;
+    for (let i = 0; i < 4; i++) {
+      const sy = y - 36 - i * 10 - Math.sin(t + i) * 2;
+      const sx = x + BASE_W - 30 + Math.sin(t * 0.5 + i) * 4;
+      const size = 4 + i;
+      ctx.fillStyle = `rgba(200,200,210,${0.4 - i * 0.08})`;
+      ctx.fillRect(sx | 0, sy | 0, size, size);
+    }
+    // roof
+    ctx.fillStyle = C.baseRoof;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x + BASE_W / 2, y - 36);
+    ctx.lineTo(x + BASE_W + 10, y);
+    ctx.closePath();
+    ctx.fill();
+    // roof shadow
+    ctx.fillStyle = C.baseRoofShadow;
+    ctx.beginPath();
+    ctx.moveTo(x + BASE_W / 2, y - 36);
+    ctx.lineTo(x + BASE_W + 10, y);
+    ctx.lineTo(x + BASE_W, y);
+    ctx.lineTo(x + BASE_W / 2 + 4, y - 28);
+    ctx.closePath();
+    ctx.fill();
+    // roof shingle lines
+    ctx.fillStyle = C.baseRoofShadow;
+    for (let i = 0; i < 4; i++) {
+      const sy = y - 30 + i * 8;
+      const half = (y - sy) * (BASE_W / 2 + 10) / 36;
+      ctx.fillRect((x + BASE_W / 2 - half) | 0, sy | 0, half * 2, 1);
+    }
+    // wall
+    ctx.fillStyle = C.baseWall;
+    ctx.fillRect(x, y, BASE_W, BASE_H);
+    // wood plank lines
+    ctx.fillStyle = C.baseWallShadow;
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(x, y + 4 + i * 22, BASE_W, 1);
+    }
+    // window left
+    drawWindow(x + 14, y + 24, C.baseWindow);
+    // window right
+    drawWindow(x + BASE_W - 38, y + 24, C.baseWindow);
+    // door
+    ctx.fillStyle = C.baseDoor;
+    ctx.fillRect(x + BASE_W / 2 - 14, y + BASE_H - 50, 28, 50);
+    ctx.fillStyle = '#1a0e08';
+    ctx.fillRect(x + BASE_W / 2 - 14, y + BASE_H - 50, 28, 2);
+    ctx.fillRect(x + BASE_W / 2 - 14, y + BASE_H - 50, 2, 50);
+    ctx.fillRect(x + BASE_W / 2 + 12, y + BASE_H - 50, 2, 50);
+    // door panels
+    ctx.fillStyle = '#2a1610';
+    ctx.fillRect(x + BASE_W / 2 - 10, y + BASE_H - 44, 20, 18);
+    ctx.fillRect(x + BASE_W / 2 - 10, y + BASE_H - 22, 20, 18);
+    // door knob
+    ctx.fillStyle = C.coin;
+    ctx.fillRect(x + BASE_W / 2 + 7, y + BASE_H - 26, 2, 2);
+    // door step
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(x + BASE_W / 2 - 18, y + BASE_H, 36, 2);
+    // welcome plank
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(x + BASE_W / 2 - 12, y + BASE_H - 56, 24, 4);
+    pixelText('HOME', x + BASE_W / 2, y + BASE_H - 56, 8, '#ffe080', 'center', false);
+  }
+
+  function drawWindow(x, y, color) {
+    // frame
+    ctx.fillStyle = C.baseWindowFrame;
+    ctx.fillRect(x - 2, y - 2, 28, 24);
+    // glass
+    const flicker = (Math.floor(game.timeAcc * 6) % 11 === 0) ? '#fff7a8' : color;
+    ctx.fillStyle = flicker;
+    ctx.fillRect(x, y, 24, 20);
+    // cross
+    ctx.fillStyle = C.baseWindowFrame;
+    ctx.fillRect(x + 11, y, 2, 20);
+    ctx.fillRect(x, y + 9, 24, 2);
+    // glow
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = color;
+    ctx.fillRect(x - 4, y - 4, 32, 28);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawShop(x, y) {
+    // roof
+    ctx.fillStyle = C.shopRoof;
+    ctx.fillRect(x - 8, y - 10, SHOP_W + 16, 14);
+    ctx.fillStyle = '#5a3878';
+    ctx.fillRect(x - 8, y - 10, SHOP_W + 16, 2);
+    // wall
+    ctx.fillStyle = C.shopWall;
+    ctx.fillRect(x, y, SHOP_W, SHOP_H);
+    ctx.fillStyle = C.shopWallShadow;
+    for (let i = 0; i < 5; i++) ctx.fillRect(x, y + 6 + i * 26, SHOP_W, 1);
+    // brick texture
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 8; col++) {
+        const bx = x + col * 18 + (row % 2 ? 9 : 0);
+        const by = y + row * 14;
+        if (bx + 18 < x + SHOP_W && by + 14 < y + SHOP_H) {
+          ctx.fillStyle = C.shopWallShadow;
+          ctx.fillRect(bx, by, 18, 1);
+          ctx.fillRect(bx, by, 1, 14);
+        }
+      }
+    }
+    // big sign
+    const signY = y - 42;
+    ctx.fillStyle = C.shopSign;
+    ctx.fillRect(x + 5, signY, SHOP_W - 10, 28);
+    // sign neon border (flickering pink/yellow)
+    const neonOn = Math.floor(game.timeAcc * 8) % 17 !== 0;
+    ctx.fillStyle = neonOn ? C.shopNeon : '#6a3060';
+    ctx.fillRect(x + 5, signY, SHOP_W - 10, 2);
+    ctx.fillRect(x + 5, signY + 26, SHOP_W - 10, 2);
+    ctx.fillRect(x + 5, signY, 2, 28);
+    ctx.fillRect(x + SHOP_W - 7, signY, 2, 28);
+    pixelText('SHOP', x + SHOP_W / 2, signY + 8, 16, C.shopSignText, 'center');
+    // sign glow
+    if (neonOn) {
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = C.shopNeon;
+      ctx.fillRect(x, signY - 4, SHOP_W, 36);
+      ctx.globalAlpha = 1;
+    }
+    // sign posts
+    ctx.fillStyle = '#2a1c40';
+    ctx.fillRect(x + 8, signY + 28, 2, 6);
+    ctx.fillRect(x + SHOP_W - 10, signY + 28, 2, 6);
+    // window
+    drawShopWindow(x + 18, y + 24);
+    drawShopWindow(x + SHOP_W - 50, y + 24);
+    // door
+    ctx.fillStyle = '#1a0820';
+    ctx.fillRect(x + SHOP_W / 2 - 16, y + SHOP_H - 56, 32, 56);
+    ctx.fillStyle = '#3a1c50';
+    ctx.fillRect(x + SHOP_W / 2 - 16, y + SHOP_H - 56, 32, 2);
+    ctx.fillRect(x + SHOP_W / 2 - 16, y + SHOP_H - 56, 2, 56);
+    ctx.fillRect(x + SHOP_W / 2 + 14, y + SHOP_H - 56, 2, 56);
+    // door window
+    ctx.fillStyle = C.shopWindow;
+    ctx.fillRect(x + SHOP_W / 2 - 8, y + SHOP_H - 48, 16, 16);
+    ctx.fillStyle = '#1a0820';
+    ctx.fillRect(x + SHOP_W / 2, y + SHOP_H - 48, 1, 16);
+    ctx.fillRect(x + SHOP_W / 2 - 8, y + SHOP_H - 40, 16, 1);
+    // doorknob
+    ctx.fillStyle = C.coin;
+    ctx.fillRect(x + SHOP_W / 2 + 9, y + SHOP_H - 28, 2, 2);
+  }
+
+  function drawShopWindow(x, y) {
+    ctx.fillStyle = '#1a0820';
+    ctx.fillRect(x - 2, y - 2, 28, 24);
+    ctx.fillStyle = C.shopWindow;
+    ctx.fillRect(x, y, 24, 20);
+    ctx.fillStyle = '#1a0820';
+    ctx.fillRect(x + 11, y, 2, 20);
+    ctx.fillRect(x, y + 9, 24, 2);
+    // glow
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = C.shopWindow;
+    ctx.fillRect(x - 4, y - 4, 32, 28);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawHole(x, y) {
+    // wooden frame
+    ctx.fillStyle = C.holeFrame;
+    ctx.fillRect(x - 8, y - 14, HOLE_W + 16, 14);
+    ctx.fillStyle = C.holeFrameDark;
+    ctx.fillRect(x - 8, y - 14, HOLE_W + 16, 3);
+    ctx.fillRect(x - 8, y - 4, HOLE_W + 16, 2);
+    // plank divisions
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = C.holeFrameDark;
+      ctx.fillRect(x - 6 + i * 28, y - 14, 2, 14);
+    }
+    // dark hole
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x, y, HOLE_W, 140);
+    // hole interior gradient (top edge lit)
+    const grd = ctx.createLinearGradient(0, y, 0, y + 80);
+    grd.addColorStop(0, 'rgba(60,40,20,0.6)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(x, y, HOLE_W, 80);
+    // ropes / pulley
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(x - 10, y - 30, HOLE_W + 20, 4);
+    ctx.fillRect(x - 14, y - 34, 6, 14);
+    ctx.fillRect(x + HOLE_W + 8, y - 34, 6, 14);
+    // pulley wheel
+    ctx.fillStyle = '#6a4828';
+    ctx.fillRect(x + HOLE_W / 2 - 5, y - 30, 10, 8);
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(x + HOLE_W / 2 - 1, y - 28, 2, 4);
+    // rope dangling
+    ctx.fillStyle = '#aa8848';
+    ctx.fillRect(x + HOLE_W / 2 - 1, y - 22, 2, 30);
+    // prompt
+    if ((Math.floor(game.timeAcc * 4) % 2) === 0) {
+      pixelText('[S] DESCEND', x + HOLE_W / 2, y - 56, 10, '#fff', 'center');
+    }
+  }
+
+  // ---------- DRAW SHAFT ----------
+  function drawShaft() {
+    // background color based on depth
+    const t = Math.min(1, game.depth / 1400);
+    const r = Math.round(40 * (1 - t) + 0 * t);
+    const g = Math.round(28 * (1 - t) + 0 * t);
+    const b = Math.round(18 * (1 - t) + 4 * t);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // sky strip at top if shallow
+    if (game.depth < 100) {
+      const skyA = 1 - game.depth / 100;
+      ctx.fillStyle = `rgba(26,21,56,${skyA})`;
+      ctx.fillRect(0, 0, W, 40);
+      // hole frame at top
+      ctx.fillStyle = `rgba(58,40,32,${skyA})`;
+      ctx.fillRect(SHAFT_LEFT - 8, 0, SHAFT_RIGHT - SHAFT_LEFT + 16, 8);
+    }
+
+    // shaft walls
+    drawShaftWalls();
+
+    // ore clusters (drawn before player but lit by lamp)
+    const playerScreenY = PLAYER_SHAFT_Y;
+    const grabSet = new Set((game.grabbable || []).map(g => g.ore));
+    for (const c of game.oreClusters) {
+      const baseScreenY = (c.depth - game.depth) + playerScreenY;
+      if (baseScreenY < -50 || baseScreenY > H + 50) continue;
+      for (const o of c.ores) {
+        if (o.collected) continue;
+        const wallX = c.side === 'left' ? SHAFT_LEFT - 4 + o.ox : SHAFT_RIGHT - 6 + o.ox;
+        const sy = baseScreenY + o.oy;
+        const ot = ORE_TYPES[c.type];
+        // dark rock backing — makes the ore look like it's bulging out of the wall
+        ctx.fillStyle = C.wallShadow;
+        if (c.side === 'left') {
+          ctx.fillRect(SHAFT_LEFT - 8, sy - 1, 8, 8);
+        } else {
+          ctx.fillRect(SHAFT_RIGHT, sy - 1, 8, 8);
+        }
+        // pulsing glow for rare ores
+        if (ot.glow) {
+          const pulse = 0.5 + 0.3 * Math.sin(game.timeAcc * 4 + c.depth);
+          ctx.globalAlpha = 0.5 * pulse;
+          ctx.fillStyle = ot.glow;
+          ctx.fillRect(wallX - 3, sy - 3, 12, 12);
+          ctx.globalAlpha = 0.3 * pulse;
+          ctx.fillRect(wallX - 6, sy - 6, 18, 18);
+          ctx.globalAlpha = 1;
+        }
+        // grabbable highlight ring (pulsing white)
+        if (grabSet.has(o)) {
+          const pulse = 0.5 + 0.5 * Math.sin(game.timeAcc * 8);
+          ctx.globalAlpha = 0.4 + 0.4 * pulse;
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(wallX - 2, sy - 2, 10, 1);
+          ctx.fillRect(wallX - 2, sy + 7, 10, 1);
+          ctx.fillRect(wallX - 2, sy - 2, 1, 10);
+          ctx.fillRect(wallX + 7, sy - 2, 1, 10);
+          ctx.globalAlpha = 1;
+        }
+        // ore body
+        ctx.fillStyle = ot.color;
+        ctx.fillRect(wallX, sy, 6, 6);
+        // edge shadow
+        ctx.fillStyle = ot.edge;
+        ctx.fillRect(wallX, sy + 5, 6, 1);
+        ctx.fillRect(wallX + 5, sy, 1, 6);
+        // specular highlight
+        ctx.fillStyle = ot.spec;
+        ctx.fillRect(wallX + 1, sy + 1, 2, 1);
+        ctx.fillRect(wallX + 1, sy + 1, 1, 2);
+      }
+    }
+
+    // dust particles
+    drawDust();
+
+    // player
+    const p = game.player;
+    const ascending = input('w') || input('arrowup');
+    drawMiner(p.x, PLAYER_SHAFT_Y, {
+      walkPhase: p.walkPhase,
+      facing: p.facing,
+      carryCount: game.carried.length,
+      mode: 'shaft',
+      mining: Math.abs(p.vx) > 1,
+      ascending,
+      blink: p.blink,
+    });
+
+    // helmet light cone — multiply blend over everything for darkness
+    if (game.depth > 30) {
+      const darkness = Math.min(0.78, 0.2 + game.depth / 1400 * 0.7);
+      ctx.fillStyle = `rgba(0,0,0,${darkness})`;
+      ctx.fillRect(0, 0, W, H);
+      // cut out light area
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      const lampX = p.x + p.w / 2 + (p.facing > 0 ? 2 : -2);
+      const lampY = PLAYER_SHAFT_Y + 6;
+      const grd = ctx.createRadialGradient(lampX, lampY, 10, lampX, lampY, 100);
+      grd.addColorStop(0, 'rgba(255,255,255,0.95)');
+      grd.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      // warm overlay where the lamp shines
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const grd2 = ctx.createRadialGradient(lampX, lampY, 5, lampX, lampY, 90);
+      grd2.addColorStop(0, 'rgba(255,220,140,0.25)');
+      grd2.addColorStop(1, 'rgba(255,200,100,0)');
+      ctx.fillStyle = grd2;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+
+    drawParticles(0, 0);
+
+    // [SPACE] GRAB prompt when ores are in range
+    if (game.grabbable && game.grabbable.length > 0) {
+      const full = game.carried.length >= game.carriedMax;
+      const label = full ? 'CARRY FULL' : '[SPACE] GRAB';
+      const color = full ? '#ff8080' : '#ffe080';
+      const px = p.x + p.w / 2;
+      const py = PLAYER_SHAFT_Y - 18;
+      const tw = label.length * 7 + 12;
+      const bob = Math.sin(game.timeAcc * 6) * 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(px - tw / 2, py + bob, tw, 14);
+      ctx.fillStyle = color;
+      ctx.fillRect(px - tw / 2, py + bob, tw, 1);
+      ctx.fillRect(px - tw / 2, py + bob + 13, tw, 1);
+      pixelText(label, px, py + bob + 2, 10, color, 'center');
+    }
+
+    drawShaftHUD();
+
+    if (game.milestoneMsg) {
+      const m = game.milestoneMsg;
+      const a = Math.min(1, m.time / 0.4);
+      ctx.globalAlpha = a;
+      panel(W / 2 - 160, H / 2 - 30, 320, 50);
+      pixelText(m.text, W / 2, H / 2 - 18, 20, '#ffe080', 'center');
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawShaftWalls() {
+    const tile = 20;
+    const depthInt = Math.floor(game.depth);
+    const offset = depthInt % tile;
+    for (let y = -tile; y < H + tile; y += tile) {
+      const wy = y - offset;
+      const rowIdx = Math.floor((depthInt + y) / tile);
+      for (let x = 0; x < SHAFT_LEFT; x += tile) {
+        const dark = (rowIdx + (x / tile)) % 2 === 0;
+        ctx.fillStyle = dark ? C.wallA : C.wallB;
+        ctx.fillRect(x, wy, tile, tile);
+        // pixel inner detail
+        ctx.fillStyle = C.wallShadow;
+        ctx.fillRect(x, wy, tile, 1);
+        ctx.fillRect(x, wy, 1, tile);
+        // bedrock chunks
+        ctx.fillStyle = C.wallHighlight;
+        ctx.fillRect(x + 4, wy + 5, 2, 2);
+        ctx.fillRect(x + 12, wy + 14, 3, 2);
+        ctx.fillStyle = C.wallShadow;
+        ctx.fillRect(x + 8, wy + 10, 2, 1);
+        ctx.fillRect(x + 14, wy + 6, 1, 3);
+      }
+      for (let x = SHAFT_RIGHT; x < W; x += tile) {
+        const dark = (rowIdx + (x / tile)) % 2 === 0;
+        ctx.fillStyle = dark ? C.wallA : C.wallB;
+        ctx.fillRect(x, wy, tile, tile);
+        ctx.fillStyle = C.wallShadow;
+        ctx.fillRect(x, wy, tile, 1);
+        ctx.fillRect(x, wy, 1, tile);
+        ctx.fillStyle = C.wallHighlight;
+        ctx.fillRect(x + 4, wy + 5, 2, 2);
+        ctx.fillRect(x + 12, wy + 14, 3, 2);
+        ctx.fillStyle = C.wallShadow;
+        ctx.fillRect(x + 8, wy + 10, 2, 1);
+        ctx.fillRect(x + 14, wy + 6, 1, 3);
+      }
+    }
+
+    // wooden support beams every 200 px depth
+    const beamSpacing = 200;
+    const firstBeam = Math.floor(game.depth / beamSpacing) * beamSpacing;
+    for (let b = firstBeam; b < game.depth + 600; b += beamSpacing) {
+      const by = (b - game.depth) + PLAYER_SHAFT_Y;
+      if (by < -30 || by > H + 30) continue;
+      // horizontal beam
+      ctx.fillStyle = C.wallSupport;
+      ctx.fillRect(SHAFT_LEFT - 4, by - 8, SHAFT_RIGHT - SHAFT_LEFT + 8, 4);
+      ctx.fillStyle = C.wallSupportDark;
+      ctx.fillRect(SHAFT_LEFT - 4, by - 8, SHAFT_RIGHT - SHAFT_LEFT + 8, 1);
+      ctx.fillRect(SHAFT_LEFT - 4, by - 5, SHAFT_RIGHT - SHAFT_LEFT + 8, 1);
+      // vertical posts
+      ctx.fillStyle = C.wallSupport;
+      ctx.fillRect(SHAFT_LEFT - 4, by - 30, 4, 22);
+      ctx.fillRect(SHAFT_RIGHT, by - 30, 4, 22);
+      ctx.fillStyle = C.wallSupportDark;
+      ctx.fillRect(SHAFT_LEFT - 4, by - 30, 1, 22);
+      ctx.fillRect(SHAFT_RIGHT, by - 30, 1, 22);
+      // bolts
+      ctx.fillStyle = '#1a0e08';
+      ctx.fillRect(SHAFT_LEFT - 2, by - 6, 1, 1);
+      ctx.fillRect(SHAFT_RIGHT + 2, by - 6, 1, 1);
+      // depth marking
+      pixelText(b + 'm', SHAFT_LEFT - 12, by - 22, 8, '#ffe080', 'right', false);
+    }
+
+    // shaft inner edge
+    ctx.fillStyle = '#000';
+    ctx.fillRect(SHAFT_LEFT - 2, 0, 2, H);
+    ctx.fillRect(SHAFT_RIGHT, 0, 2, H);
+    ctx.fillStyle = C.wallShadow;
+    ctx.fillRect(SHAFT_LEFT, 0, 1, H);
+    ctx.fillRect(SHAFT_RIGHT - 1, 0, 1, H);
+
+    // dripping water
+    const dripSeed = Math.floor(game.depth / 25);
+    for (let i = 0; i < 6; i++) {
+      const seed = (dripSeed + i * 7);
+      const side = seed % 2;
+      const dx = side === 0 ? SHAFT_LEFT - 4 : SHAFT_RIGHT + 2;
+      const dy = ((seed * 13) % (H - 20)) + 10;
+      // drip body
+      ctx.fillStyle = '#3a6a98';
+      ctx.fillRect(dx, dy, 2, 4);
+      ctx.fillStyle = '#5a8ac8';
+      ctx.fillRect(dx, dy, 2, 1);
+      // splash trail
+      ctx.fillStyle = 'rgba(80,130,180,0.4)';
+      ctx.fillRect(dx, dy + 4, 1, 6);
+    }
+
+    // cracks
+    for (let i = 0; i < 8; i++) {
+      const seed = (Math.floor(game.depth / 60) + i * 5);
+      const cx = (seed % 3 === 0)
+        ? (seed * 7) % (SHAFT_LEFT - 20)
+        : SHAFT_RIGHT + 10 + (seed * 7) % (W - SHAFT_RIGHT - 30);
+      const cy = (seed * 11) % H;
+      ctx.strokeStyle = '#1a0c06';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + 4, cy + 3);
+      ctx.lineTo(cx + 9, cy + 1);
+      ctx.lineTo(cx + 14, cy + 5);
+      ctx.stroke();
+    }
+  }
+
+  // ---------- HUD ----------
+  function drawCoin(x, y, size = 12) {
+    ctx.fillStyle = C.coin;
+    ctx.fillRect(x, y, size, size);
+    ctx.fillStyle = C.coinShade;
+    ctx.fillRect(x, y + size - 3, size, 3);
+    ctx.fillRect(x + size - 3, y, 3, size);
+    ctx.fillStyle = '#fff8a0';
+    ctx.fillRect(x + 2, y + 2, 3, 3);
+    ctx.fillStyle = '#1a1408';
+    ctx.fillRect(x + size / 2 - 1, y + 2, 2, size - 4);
+    ctx.fillRect(x + 2, y + size / 2 - 1, size - 4, 2);
+  }
+
+  function drawOreIcon(x, y, type, size = 10) {
+    const ot = ORE_TYPES[type];
+    if (ot.glow) {
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = ot.glow;
+      ctx.fillRect(x - 2, y - 2, size + 4, size + 4);
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = ot.color;
+    ctx.fillRect(x, y, size, size);
+    ctx.fillStyle = ot.edge;
+    ctx.fillRect(x, y + size - 2, size, 2);
+    ctx.fillRect(x + size - 2, y, 2, size);
+    ctx.fillStyle = ot.spec;
+    ctx.fillRect(x + 1, y + 1, 3, 2);
+  }
+
+  function drawSurfaceHUD() {
+    // money
+    panel(8, 8, 150, 32);
+    drawCoin(16, 18, 12);
+    pixelText('$' + Math.floor(game.money), 36, 16, 16, '#fff');
+
+    // carried + income
+    panel(W - 220, 8, 212, 32);
+    drawOreIcon(W - 210, 19, 'coal', 10);
+    pixelText(`${game.carried.length}/${game.carriedMax}`, W - 196, 16, 14, '#fff');
+    pixelText(`+$${passiveIncome()}/s`, W - 140, 16, 14, C.textHi);
+
+    if (game.maxDepth > 0) {
+      panel(W / 2 - 80, 8, 160, 28);
+      pixelText('MAX ' + Math.floor(game.maxDepth) + 'm', W / 2, 14, 14, '#aac8ff', 'center');
+    }
+
+    // controls hint at bottom
+    panel(W / 2 - 200, H - 30, 400, 24);
+    pixelText('[WASD/ARROWS] move  [W/UP] enter  [S/DOWN] descend', W / 2, H - 26, 11, C.textDim, 'center');
+  }
+
+  function drawShaftHUD() {
+    panel(8, 8, 150, 32);
+    drawCoin(16, 18, 12);
+    pixelText('$' + Math.floor(game.money), 36, 16, 16, '#fff');
+
+    // oxygen
+    const oxPct = game.oxygen / game.oxygenMax;
+    panel(W / 2 - 130, 8, 260, 32);
+    pixelText('O2', W / 2 - 120, 16, 14, '#fff');
+    const barX = W / 2 - 90, barY = 18, barW = 200, barH = 12;
+    ctx.fillStyle = '#1a1020';
+    ctx.fillRect(barX, barY, barW, barH);
+    let barColor = '#5fdc5f';
+    let barEdge = '#2a8a2a';
+    if (oxPct < 0.25) {
+      const flash = (Math.floor(game.timeAcc * 6) % 2) === 0;
+      barColor = flash ? '#ff4040' : '#aa2020';
+      barEdge = '#5a0a0a';
+    } else if (oxPct < 0.5) { barColor = '#dcdc5f'; barEdge = '#8a8a2a'; }
+    ctx.fillStyle = barColor;
+    ctx.fillRect(barX + 1, barY + 1, (barW - 2) * oxPct, barH - 2);
+    ctx.fillStyle = barEdge;
+    ctx.fillRect(barX + 1, barY + barH - 3, (barW - 2) * oxPct, 2);
+    // tick marks
+    ctx.fillStyle = '#000';
+    for (let i = 1; i < 4; i++) {
+      ctx.fillRect(barX + (barW * i / 4) | 0, barY, 1, barH);
+    }
+
+    panel(W - 220, 8, 212, 32);
+    drawOreIcon(W - 210, 19, 'coal', 10);
+    pixelText(`${game.carried.length}/${game.carriedMax}`, W - 196, 16, 14, '#fff');
+    pixelText(`+$${passiveIncome()}/s`, W - 140, 16, 14, C.textHi);
+
+    // depth at bottom
+    panel(W / 2 - 100, H - 50, 200, 36);
+    pixelText('DEPTH', W / 2, H - 46, 11, C.textDim, 'center');
+    pixelText(Math.floor(game.depth) + 'm', W / 2, H - 32, 18, '#fff', 'center');
+
+    // descent speed bottom-left
+    panel(8, H - 40, 130, 26);
+    pixelText(`▼ ${currentDescentSpeed().toFixed(1)} px/s`, 14, H - 34, 11, '#aac8ff');
+  }
+
+  // ---------- BASE INTERIOR ----------
+  function drawBaseScreen() {
+    // wallpaper
+    ctx.fillStyle = '#3a2418';
+    ctx.fillRect(0, 0, W, H);
+    // wallpaper stripes
+    ctx.fillStyle = '#4a2e1c';
+    for (let x = 0; x < W; x += 24) ctx.fillRect(x, 0, 12, H - 80);
+    // wall trim
+    ctx.fillStyle = '#1a0e08';
+    ctx.fillRect(0, H - 100, W, 4);
+    // wood floor
+    ctx.fillStyle = '#6a4828';
+    ctx.fillRect(0, H - 96, W, 96);
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = '#3a2818';
+      ctx.fillRect(0, H - 88 + i * 12, W, 1);
+    }
+    for (let x = 0; x < W; x += 90) {
+      ctx.fillStyle = '#3a2818';
+      ctx.fillRect(x + ((x / 90 | 0) % 2 ? 45 : 0), H - 96, 1, 96);
+    }
+    // floor highlight (light from windows)
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = '#ffdf6f';
+    ctx.fillRect(80, H - 96, 100, 96);
+    ctx.fillRect(W - 180, H - 96, 100, 96);
+    ctx.globalAlpha = 1;
+
+    // back wall furniture: shelves with placed ores
+    pixelText('OVERFLOW MINE TROVE', W / 2, 14, 22, '#ffe080', 'center');
+    pixelText('click empty slot to place, click ore to take it back', W / 2, 42, 12, C.textDim, 'center');
+    pixelText('total income: +$' + passiveIncome() + '/s', W / 2, 60, 14, C.textHi, 'center');
+
+    // 12 display slots — 2 rows of 6, themed as a wooden display case
+    const cols = 6, rows = 2;
+    const slotSize = 80;
+    const gap = 8;
+    const gridW = cols * (slotSize + gap) - gap;
+    const gridX = (W - gridW) / 2;
+    const gridY = 100;
+    // shelf backing
+    ctx.fillStyle = '#5a3a22';
+    ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, rows * (slotSize + gap) - gap + 20);
+    ctx.fillStyle = '#3a2414';
+    ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, 4);
+    ctx.fillRect(gridX - 12, gridY + rows * (slotSize + gap) - gap + 6, gridW + 24, 4);
+
+    for (let i = 0; i < 12; i++) {
+      const cx = i % cols;
+      const cy = (i / cols) | 0;
+      const sx = gridX + cx * (slotSize + gap);
+      const sy = gridY + cy * (slotSize + gap);
+      const hovered = mouse.x >= sx && mouse.x <= sx + slotSize && mouse.y >= sy && mouse.y <= sy + slotSize;
+      const occupied = game.placed[i] !== null;
+      const canPlace = !occupied && game.carried.length > 0;
+      const canTake = occupied && game.carried.length < game.carriedMax;
+      // slot background
+      ctx.fillStyle = hovered && (canPlace || canTake) ? '#3a2818' : '#1a0e08';
+      ctx.fillRect(sx, sy, slotSize, slotSize);
+      // inner frame
+      ctx.fillStyle = '#8a5a30';
+      ctx.fillRect(sx, sy, slotSize, 2);
+      ctx.fillRect(sx, sy + slotSize - 2, slotSize, 2);
+      ctx.fillRect(sx, sy, 2, slotSize);
+      ctx.fillRect(sx + slotSize - 2, sy, 2, slotSize);
+      ctx.fillStyle = '#5a3818';
+      ctx.fillRect(sx + 2, sy + 2, slotSize - 4, 1);
+      ctx.fillRect(sx + 2, sy + 2, 1, slotSize - 4);
+
+      const o = game.placed[i];
+      if (o) {
+        const ot = ORE_TYPES[o];
+        // pedestal
+        ctx.fillStyle = '#3a2210';
+        ctx.fillRect(sx + 18, sy + slotSize - 24, 44, 8);
+        ctx.fillStyle = '#1a0e08';
+        ctx.fillRect(sx + 18, sy + slotSize - 16, 44, 2);
+        // glow halo
+        if (ot.glow) {
+          const pulse = 0.6 + 0.3 * Math.sin(game.timeAcc * 3 + i);
+          ctx.globalAlpha = 0.4 * pulse;
+          ctx.fillStyle = ot.glow;
+          ctx.fillRect(sx + 10, sy + 16, 60, 30);
+          ctx.globalAlpha = 1;
+        }
+        // big ore gem
+        ctx.fillStyle = ot.color;
+        ctx.fillRect(sx + 28, sy + 22, 24, 18);
+        ctx.fillStyle = ot.edge;
+        ctx.fillRect(sx + 28, sy + 36, 24, 4);
+        ctx.fillRect(sx + 48, sy + 22, 4, 18);
+        ctx.fillStyle = ot.spec;
+        ctx.fillRect(sx + 30, sy + 24, 6, 3);
+        ctx.fillRect(sx + 30, sy + 24, 3, 6);
+        // labels
+        pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
+        pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+        if (hovered && canTake) {
+          pixelText('take', sx + slotSize / 2, sy + 4, 9, '#ffe080', 'center');
+        }
+      } else {
+        pixelText('—', sx + slotSize / 2, sy + slotSize / 2 - 4, 14, '#3a2818', 'center');
+        if (canPlace && hovered) {
+          pixelText('place', sx + slotSize / 2, sy + slotSize / 2 + 12, 9, '#aaa', 'center');
+        }
+      }
+      if (hovered && mouse.clicked) {
+        if (canPlace) {
+          const ore = game.carried.shift();
+          game.placed[i] = ore;
+        } else if (canTake) {
+          game.carried.push(game.placed[i]);
+          game.placed[i] = null;
+        }
+      }
+    }
+
+    // PLACE BEST button — auto-optimizes the trove
+    if (button(W / 2 - 90, H - 130, 180, 26, 'PLACE BEST ORES')) {
+      placeBestOres();
+    }
+
+    // carried ores tray at bottom
+    panel(W / 2 - 200, H - 96, 400, 60);
+    pixelText('CARRIED', W / 2 - 192, H - 90, 11, C.textDim);
+    for (let i = 0; i < game.carriedMax; i++) {
+      const cx = W / 2 - 184 + i * 30;
+      const cy = H - 70;
+      ctx.fillStyle = '#1a1020';
+      ctx.fillRect(cx, cy, 24, 24);
+      ctx.fillStyle = '#3a2a4a';
+      ctx.fillRect(cx, cy, 24, 1);
+      ctx.fillRect(cx, cy, 1, 24);
+      if (i < game.carried.length) {
+        drawOreIcon(cx + 6, cy + 6, game.carried[i], 12);
+      }
+    }
+
+    // money top-right
+    panel(W - 170, 14, 156, 32);
+    drawCoin(W - 160, 24, 12);
+    pixelText('$' + Math.floor(game.money), W - 140, 22, 14, '#fff');
+
+    // leave
+    if (button(W - 140, H - 30, 120, 26, 'LEAVE [B]')) {
+      game.scene = 'surface';
+    }
+    if (input('b') && justPressed['b'] !== undefined) {
+      game.scene = 'surface';
+    }
+  }
+
+  // ---------- SHOP ----------
+  function drawShopScreen() {
+    drawSurface();
+    ctx.fillStyle = 'rgba(8,4,16,0.78)';
+    ctx.fillRect(0, 0, W, H);
+
+    const px = 120, py = 60, pw = W - 240, ph = H - 120;
+    panel(px, py, pw, ph, '#1a0e2a', '#a880ff', '#5a3aa0');
+    // inner shading
+    ctx.fillStyle = 'rgba(60,40,120,0.2)';
+    ctx.fillRect(px + 8, py + 8, pw - 16, 4);
+
+    // title bar
+    ctx.fillStyle = '#3a1c5a';
+    ctx.fillRect(px + 8, py + 8, pw - 16, 36);
+    ctx.fillStyle = '#a880ff';
+    ctx.fillRect(px + 8, py + 44, pw - 16, 1);
+    pixelText('★ SHOP ★', W / 2, py + 16, 22, '#ffe080', 'center');
+
+    // money
+    panel(px + pw - 160, py + 56, 140, 28, '#0e0820');
+    drawCoin(px + pw - 150, py + 66, 12);
+    pixelText('$' + Math.floor(game.money), px + pw - 132, py + 64, 14, '#fff');
+
+    // weight item
+    drawShopItem(px + 20, py + 96, pw - 40, 90, {
+      icon: drawWeightIcon,
+      title: 'IRON WEIGHT',
+      desc: `Slows descent by 5% (multiplicative)`,
+      stat1: `OWNED: ${game.weights}`,
+      stat2: `DESCENT: ${currentDescentSpeed().toFixed(1)} px/s`,
+      cost: game.weightPrice,
+      onBuy: () => {
+        if (game.money >= game.weightPrice) {
+          game.money -= game.weightPrice;
+          game.weights++;
+          game.weightPrice += 10;
+        }
+      },
+    });
+
+    // oxygen item
+    drawShopItem(px + 20, py + 200, pw - 40, 90, {
+      icon: drawO2Icon,
+      title: 'OXYGEN TANK',
+      desc: 'Adds +80 max O₂ and refills tank',
+      stat1: `MAX O2: ${game.oxygenMax}`,
+      stat2: `CURRENT: ${Math.floor(game.oxygen)}`,
+      cost: game.oxygenPrice,
+      onBuy: () => {
+        if (game.money >= game.oxygenPrice) {
+          game.money -= game.oxygenPrice;
+          game.oxygenMax += 80;
+          game.oxygen = game.oxygenMax;
+        }
+      },
+    });
+
+    if (button(W / 2 - 70, py + ph - 56, 140, 38, 'LEAVE [B]')) {
+      game.scene = 'surface';
+    }
+    if (input('b')) game.scene = 'surface';
+  }
+
+  function drawShopItem(x, y, w, h, item) {
+    // item bg
+    ctx.fillStyle = '#0e0820';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#3a1c5a';
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    ctx.fillRect(x + w - 2, y, 2, h);
+
+    // icon panel
+    ctx.fillStyle = '#1a1030';
+    ctx.fillRect(x + 8, y + 8, 64, h - 16);
+    ctx.fillStyle = '#5a3aa0';
+    ctx.fillRect(x + 8, y + 8, 64, 1);
+    ctx.fillRect(x + 8, y + 8, 1, h - 16);
+    item.icon(x + 40, y + h / 2);
+
+    // text
+    pixelText(item.title, x + 84, y + 14, 16, '#fff');
+    pixelText(item.desc, x + 84, y + 36, 11, C.textDim);
+    pixelText(item.stat1, x + 84, y + 54, 11, '#aac8ff');
+    pixelText(item.stat2, x + 84, y + 68, 11, '#aac8ff');
+
+    // buy button
+    const canBuy = game.money >= item.cost;
+    if (button(x + w - 140, y + h / 2 - 18, 124, 38, `BUY  $${item.cost}`, canBuy)) {
+      item.onBuy();
+    }
+  }
+
+  function drawWeightIcon(cx, cy) {
+    // iron weight (kettlebell style)
+    ctx.fillStyle = '#5a5a6a';
+    ctx.fillRect(cx - 4, cy - 18, 8, 4);
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(cx - 6, cy - 16, 12, 2);
+    // body
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(cx - 14, cy - 12, 28, 22);
+    ctx.fillStyle = '#5a5a6a';
+    ctx.fillRect(cx - 14, cy - 12, 28, 3);
+    ctx.fillStyle = '#1a1a2a';
+    ctx.fillRect(cx - 14, cy + 8, 28, 2);
+    // weight mark
+    pixelText('W', cx, cy - 6, 16, '#fff', 'center', false);
+  }
+
+  function drawO2Icon(cx, cy) {
+    // oxygen tank
+    ctx.fillStyle = '#5fdc5f';
+    ctx.fillRect(cx - 8, cy - 16, 16, 28);
+    ctx.fillStyle = '#3a9a3a';
+    ctx.fillRect(cx - 8, cy + 6, 16, 6);
+    ctx.fillRect(cx + 4, cy - 16, 4, 28);
+    // top valve
+    ctx.fillStyle = '#888';
+    ctx.fillRect(cx - 4, cy - 20, 8, 4);
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(cx - 2, cy - 24, 4, 4);
+    // label
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(cx - 6, cy - 8, 12, 6);
+    pixelText('O2', cx, cy - 7, 8, '#000', 'center', false);
+  }
+
+  // ---------- TITLE SCREEN ----------
+  function drawTitle() {
+    // animated bg
+    ctx.fillStyle = '#0a0820';
+    ctx.fillRect(0, 0, W, H);
+    // sky
+    for (let i = 0; i < 5; i++) {
+      const c = ['#0a0820', '#15123a', '#26204a', '#3a2c5a', '#5a3a6a'][i];
+      ctx.fillStyle = c;
+      ctx.fillRect(0, i * 60, W, 60);
+    }
+    // moon
+    ctx.fillStyle = C.moon;
+    ctx.fillRect(120, 60, 50, 50);
+    ctx.fillStyle = C.moonShade;
+    ctx.fillRect(130, 70, 10, 6);
+    ctx.fillRect(146, 90, 12, 6);
+    // stars
+    for (let i = 0; i < 80; i++) {
+      const sx = (i * 137) % W;
+      const sy = (i * 53) % 280;
+      const twinkle = ((Math.floor(game.timeAcc * 3) + i) % 5 === 0);
+      ctx.fillStyle = twinkle ? '#fff' : '#5a5078';
+      ctx.fillRect(sx, sy, twinkle ? 2 : 1, twinkle ? 2 : 1);
+    }
+    // mountains
+    drawMountains(0, 320, C.mtnFar, 0);
+    drawMountains(0, 360, C.mtnMid, 0);
+    drawMountains(0, 400, C.mtnNear, 0);
+    // ground
+    ctx.fillStyle = C.dirtMid;
+    ctx.fillRect(0, 440, W, H - 440);
+    ctx.fillStyle = C.grassTop;
+    ctx.fillRect(0, 440, W, 6);
+
+    // title with big chunky letters
+    const titleY = 130;
+    // shadow
+    pixelText('DEPTH', W / 2 + 4, titleY + 4, 96, '#1a0820', 'center', false);
+    // main
+    pixelText('DEPTH', W / 2, titleY, 96, '#ffe080', 'center', false);
+    // underline glow
+    ctx.fillStyle = '#a880ff';
+    ctx.fillRect(W / 2 - 140, titleY + 96, 280, 3);
+    ctx.fillStyle = '#5a3aa0';
+    ctx.fillRect(W / 2 - 140, titleY + 99, 280, 2);
+    pixelText('a mining descent', W / 2, titleY + 108, 16, C.textDim, 'center');
+
+    // press start (blinking)
+    if ((Math.floor(game.timeAcc * 2) % 2) === 0) {
+      pixelText('press [SPACE] to dig in', W / 2, 380, 16, '#fff', 'center');
+    }
+    pixelText('WASD or arrows to move    W to enter, S to descend', W / 2, 420, 11, C.textDim, 'center');
+
+    // mini miner walking across grass
+    const mx = ((game.timeAcc * 40) % (W + 60)) - 30;
+    drawMiner(mx, 408, {
+      walkPhase: game.timeAcc * 8,
+      facing: 1,
+      mode: 'surface',
+    });
+
+    // credits
+    pixelText('use the SHOP to buy weights and oxygen', W / 2, H - 56, 11, C.textDim, 'center');
+    pixelText('place ores in the BASE to earn passive $', W / 2, H - 40, 11, C.textDim, 'center');
+
+    if ((input(' ') || mouse.clicked) && game.timeAcc > 0.5) {
+      game.scene = 'surface';
+    }
+  }
+
+  // ---------- DEATH ----------
+  function drawDeathScreen() {
+    drawShaft();
+    ctx.fillStyle = 'rgba(20,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    // vignette
+    const grd = ctx.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, 500);
+    grd.addColorStop(0, 'rgba(0,0,0,0)');
+    grd.addColorStop(1, 'rgba(0,0,0,0.9)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+
+    panel(W / 2 - 220, H / 2 - 110, 440, 220, '#1a0810', '#ff4040', '#7a1010');
+    pixelText('YOU DIED', W / 2, H / 2 - 88, 44, '#ff4040', 'center');
+    pixelText('all carried ores were lost', W / 2, H / 2 - 36, 14, '#fff', 'center');
+    pixelText(`depth reached: ${Math.floor(game.maxDepth)}m`, W / 2, H / 2 - 14, 12, C.textDim, 'center');
+    pixelText(`income kept: +$${passiveIncome()}/s`, W / 2, H / 2 + 4, 12, C.textHi, 'center');
+    if (button(W / 2 - 90, H / 2 + 36, 180, 48, 'TRY AGAIN')) {
+      game.player.limp = 0;
+      exitShaftToSurface();
+    }
+  }
+
+  // ---------- MAIN LOOP ----------
+  const DT = 1 / 20;
+  let passiveAcc = 0;
+
+  function update() {
+    game.timeAcc += DT;
+
+    passiveAcc += DT;
+    if (passiveAcc >= 1) {
+      const ticks = Math.floor(passiveAcc);
+      passiveAcc -= ticks;
+      game.money += passiveIncome() * ticks;
+    }
+
+    if (game.scene === 'surface') updateSurface(DT);
+    else if (game.scene === 'shaft') updateShaft(DT);
+
+    updateParticles();
+
+    if (game.screenShake > 0) game.screenShake--;
+
+    for (const k in justPressed) delete justPressed[k];
+  }
+
+  function draw() {
+    ctx.save();
+    if (game.screenShake > 0) {
+      ctx.translate((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+    }
+    ctx.clearRect(0, 0, W, H);
+    if (game.scene === 'title') drawTitle();
+    else if (game.scene === 'surface') drawSurface();
+    else if (game.scene === 'shaft') drawShaft();
+    else if (game.scene === 'base') drawBaseScreen();
+    else if (game.scene === 'shop') drawShopScreen();
+    else if (game.scene === 'dead') drawDeathScreen();
+    ctx.restore();
+
+    // scanlines overlay for arcade feel
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#000';
+    for (let y = 0; y < H; y += 2) {
+      ctx.fillRect(0, y, W, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // vignette
+    const vg = ctx.createRadialGradient(W / 2, H / 2, 250, W / 2, H / 2, 500);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  setInterval(() => {
+    update();
+    draw();
+    mouse.clicked = false;
+  }, 1000 / 20);
+
+})();
+</script>
+</body>
+</html>
