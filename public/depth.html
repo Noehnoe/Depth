@@ -29,6 +29,7 @@
 </head>
 <body>
 <canvas id="game" width="800" height="600"></canvas>
+<script src="/socket.io/socket.io.js"></script>
 <script>
 (() => {
   const canvas = document.getElementById('game');
@@ -169,10 +170,21 @@
 
   // ---------- GAME STATE ----------
   const SURFACE_GROUND_Y = 460;
-  const WORLD_WIDTH = 1000;
+  const WORLD_WIDTH_BASE = 1000;
   const BASE_X = 80, BASE_W = 130, BASE_H = 130;
   const HOLE_X = 430, HOLE_W = 120;
   const SHOP_X = 760, SHOP_W = 140, SHOP_H = 140;
+  const REMOTE_HOUSE_GAP = 60;
+
+  // remote players each get a visual house in a row to the right of the shop
+  function remoteHouseX(index) {
+    return SHOP_X + SHOP_W + 80 + index * (BASE_W + REMOTE_HOUSE_GAP);
+  }
+  function currentWorldWidth() {
+    const n = Object.keys(net.remotePlayers).length;
+    if (n === 0) return WORLD_WIDTH_BASE;
+    return remoteHouseX(n - 1) + BASE_W + 100;
+  }
   const SHAFT_LEFT = 280;
   const SHAFT_RIGHT = 520;
   const PLAYER_SHAFT_Y = 240;
@@ -223,6 +235,79 @@
     timeAcc: 0,
     titleFlash: 0,
   };
+
+  // ---------- MULTIPLAYER ----------
+  const net = {
+    sock: null,
+    myId: null,
+    connected: false,
+    remotePlayers: {}, // socketId -> { x, y, depth, oxygen, carrying, alive }
+    lastSent: 0,
+    playerOrder: [], // ordered socketIds (including own) — for stable house slot assignment
+  };
+
+  function refreshPlayerOrder() {
+    const ids = Object.keys(net.remotePlayers).sort();
+    if (net.myId) ids.unshift(net.myId);
+    net.playerOrder = ids;
+  }
+
+  function initNetwork() {
+    if (typeof io === 'undefined') return; // single-player fallback
+    try {
+      net.sock = io();
+    } catch (e) {
+      return;
+    }
+    net.sock.on('connect', () => {
+      net.myId = net.sock.id;
+      net.connected = true;
+      net.sock.emit('player_join');
+      refreshPlayerOrder();
+    });
+    net.sock.on('disconnect', () => {
+      net.connected = false;
+      net.remotePlayers = {};
+      refreshPlayerOrder();
+    });
+    net.sock.on('game_state', (state) => {
+      if (!state || !state.players) return;
+      // store others, drop self
+      const next = {};
+      for (const sid in state.players) {
+        if (sid !== net.myId) next[sid] = state.players[sid];
+      }
+      net.remotePlayers = next;
+      refreshPlayerOrder();
+    });
+  }
+
+  function sendUpdate() {
+    if (!net.connected || !net.sock) return;
+    if (game.timeAcc - net.lastSent < 0.12) return;
+    net.lastSent = game.timeAcc;
+    net.sock.emit('player_update', {
+      x: game.player.x,
+      y: game.player.y,
+      depth: game.scene === 'shaft' ? game.depth : 0,
+      oxygen: game.oxygen,
+      carrying: game.carried,
+    });
+  }
+
+  // pick a stable color palette per remote player based on socket id
+  const REMOTE_PALETTES = [
+    { helmet: '#40c0e0', helmetShade: '#108090', shirt: '#3030a0', overalls: '#2858b8' },
+    { helmet: '#ff6a40', helmetShade: '#a82810', shirt: '#5a0a0a', overalls: '#682040' },
+    { helmet: '#a0ff60', helmetShade: '#508020', shirt: '#206830', overalls: '#306828' },
+    { helmet: '#e860c8', helmetShade: '#902078', shirt: '#601060', overalls: '#503888' },
+    { helmet: '#c8c8c8', helmetShade: '#707070', shirt: '#404040', overalls: '#303040' },
+  ];
+  function paletteFor(sid) {
+    let h = 0;
+    for (let i = 0; i < sid.length; i++) h = (h * 31 + sid.charCodeAt(i)) & 0xffff;
+    return REMOTE_PALETTES[h % REMOTE_PALETTES.length];
+  }
 
   function currentDescentSpeed() {
     return game.descentSpeedBase * Math.pow(0.95, game.weights);
@@ -407,7 +492,9 @@
       mining = false,
       ascending = false,
       blink = false,
+      tint = null,
     } = opts;
+    const tc = (key) => (tint && tint[key]) ? tint[key] : C[key];
     ctx.save();
     // pixel grid origin at x,y (top-left bounding box)
     const f = facing;
@@ -424,12 +511,12 @@
     if (limp > 0) {
       // collapsed body — drawn flat
       // helmet
-      px(2, 18, 6, 4, C.helmet);
+      px(2, 18, 6, 4, tc('helmet'));
       px(2, 17, 6, 1, C.helmetBand);
       // head
       px(8, 18, 4, 4, C.skin);
       // body
-      px(3, 23, 9, 4, C.overalls);
+      px(3, 23, 9, 4, tc('overalls'));
       // legs splayed
       px(4, 27, 3, 2, C.boots);
       px(9, 27, 3, 2, C.boots);
@@ -441,12 +528,12 @@
 
     // ---- HELMET ----
     // helmet dome (8 wide, 4 tall)
-    px(4, 1, 8, 4, C.helmet);
+    px(4, 1, 8, 4, tc('helmet'));
     // helmet top highlight
     px(5, 1, 6, 1, '#fff080');
     // helmet brim
-    px(3, 5, 10, 1, C.helmet);
-    px(3, 6, 10, 1, C.helmetShade);
+    px(3, 5, 10, 1, tc('helmet'));
+    px(3, 6, 10, 1, tc('helmetShade'));
     // helmet band
     px(4, 4, 8, 1, C.helmetBand);
     // headlamp on front
@@ -474,17 +561,17 @@
 
     // ---- BODY ----
     // overalls main (4-10y across, 11-22y down)
-    px(4, 11, 8, 10, C.overalls);
+    px(4, 11, 8, 10, tc('overalls'));
     // shirt collar
-    px(5, 11, 6, 1, C.shirt);
+    px(5, 11, 6, 1, tc('shirt'));
     // overall strap shading
-    px(5, 12, 1, 4, C.overallsShade);
-    px(10, 12, 1, 4, C.overallsShade);
+    px(5, 12, 1, 4, tc('overallsShade'));
+    px(10, 12, 1, 4, tc('overallsShade'));
     // pocket
-    px(7, 16, 2, 3, C.overallsShade);
+    px(7, 16, 2, 3, tc('overallsShade'));
     // belt
     px(4, 19, 8, 1, '#1a0e08');
-    px(7, 19, 2, 1, C.helmet);
+    px(7, 19, 2, 1, tc('helmet'));
 
     // ---- ARMS ----
     // arm swing for walking
@@ -507,10 +594,10 @@
     // arms hold close when carrying many
     const armX = carryCount > 6 ? 3 : 2;
     // back arm
-    px(2, armBackY, 2, 5, C.shirt);
+    px(2, armBackY, 2, 5, tc('shirt'));
     px(2, armBackY + 5, 2, 1, C.skin);
     // front arm
-    px(12, armFrontY, 2, 5, C.shirt);
+    px(12, armFrontY, 2, 5, tc('shirt'));
     px(12, armFrontY + 5, 2, 1, C.skin);
 
     // ---- PICKAXE in shaft ----
@@ -529,11 +616,11 @@
     const lLegOff = (mode === 'surface') ? legSwing : 0;
     const rLegOff = (mode === 'surface') ? -legSwing : 0;
     // left leg
-    px(5, 21, 2, 7 + Math.round(lLegOff * 0.2), C.overalls);
-    px(5, 21, 1, 7, C.overallsShade);
+    px(5, 21, 2, 7 + Math.round(lLegOff * 0.2), tc('overalls'));
+    px(5, 21, 1, 7, tc('overallsShade'));
     // right leg
-    px(9, 21, 2, 7 + Math.round(rLegOff * 0.2), C.overalls);
-    px(10, 21, 1, 7, C.overallsShade);
+    px(9, 21, 2, 7 + Math.round(rLegOff * 0.2), tc('overalls'));
+    px(10, 21, 1, 7, tc('overallsShade'));
     // boots
     px(4, 28, 4, 3, C.boots);
     px(8, 28, 4, 3, C.boots);
@@ -602,8 +689,9 @@
       p.onGround = false;
     }
 
+    const ww = currentWorldWidth();
     if (p.x < 10) { p.x = 10; p.vx = 0; }
-    if (p.x + p.w > WORLD_WIDTH - 10) { p.x = WORLD_WIDTH - 10 - p.w; p.vx = 0; }
+    if (p.x + p.w > ww - 10) { p.x = ww - 10 - p.w; p.vx = 0; }
 
     if (Math.abs(p.vx) > 0.5) p.walkPhase += 0.5; else p.walkPhase *= 0.7;
     p.bobPhase += dt;
@@ -613,7 +701,7 @@
     if (p.blinkTimer > 3) { p.blink = true; if (p.blinkTimer > 3.15) { p.blink = false; p.blinkTimer = 0; } }
 
     game.cameraX = p.x + p.w / 2 - W / 2;
-    game.cameraX = Math.max(0, Math.min(WORLD_WIDTH - W, game.cameraX));
+    game.cameraX = Math.max(0, Math.min(ww - W, game.cameraX));
 
     const pcx = p.x + p.w / 2;
     if ((input('w') || input('arrowup')) && p.onGround) {
@@ -828,7 +916,8 @@
     ctx.fillStyle = C.grassTop;
     ctx.fillRect(0, SURFACE_GROUND_Y, W, 6);
     // grass tufts
-    for (let x = 0; x < WORLD_WIDTH; x += 14) {
+    const ww = currentWorldWidth();
+    for (let x = 0; x < ww; x += 14) {
       const sx = x - camX;
       if (sx > -16 && sx < W + 16) {
         ctx.fillStyle = C.grassDark;
@@ -842,7 +931,7 @@
     }
     // small pebbles in dirt
     for (let i = 0; i < 30; i++) {
-      const px = (i * 71) % WORLD_WIDTH - camX;
+      const px = (i * 71) % ww - camX;
       const py = SURFACE_GROUND_Y + 14 + ((i * 23) % 80);
       if (px > -4 && px < W) {
         ctx.fillStyle = i % 2 ? C.dirtTop : C.dirtDeep;
@@ -858,6 +947,29 @@
     // sign near hole
     drawSign(HOLE_X - camX - 80, SURFACE_GROUND_Y - 40, 'MINE');
 
+    // extra houses + remote players on surface
+    const remoteIds = Object.keys(net.remotePlayers);
+    for (let i = 0; i < remoteIds.length; i++) {
+      const sid = remoteIds[i];
+      const rp = net.remotePlayers[sid];
+      const hx = remoteHouseX(i);
+      const pal = paletteFor(sid);
+      drawRemoteHouse(hx - camX, SURFACE_GROUND_Y - BASE_H, pal);
+      drawSign(hx - camX + BASE_W / 2 - 16, SURFACE_GROUND_Y - BASE_H - 18, 'P' + (i + 2));
+      // draw remote miner if they're on the surface
+      if (rp && (rp.depth === 0 || rp.depth === undefined) && rp.alive !== false) {
+        drawMiner(rp.x - camX, (rp.y !== undefined ? rp.y : SURFACE_GROUND_Y - 32), {
+          walkPhase: 0,
+          facing: 1,
+          mode: 'surface',
+          carryCount: (rp.carrying || []).length,
+          tint: pal,
+        });
+        // nameplate
+        pixelText('P' + (i + 2), rp.x - camX + 8, (rp.y || SURFACE_GROUND_Y - 32) - 14, 10, pal.helmet, 'center');
+      }
+    }
+
     // player
     const p = game.player;
     const idleBob = (Math.abs(p.vx) < 0.5 && p.onGround) ? Math.round(Math.sin(p.bobPhase * 4) * 1) : 0;
@@ -869,9 +981,55 @@
       mode: 'surface',
       blink: p.blink,
     });
+    if (net.connected) pixelText('P1', p.x - camX + 8, p.y - 14, 10, C.helmet, 'center');
 
     drawParticles(camX, 0);
     drawSurfaceHUD();
+  }
+
+  // A recolored house for a remote player
+  function drawRemoteHouse(x, y, pal) {
+    // roof in their color
+    ctx.fillStyle = pal.helmet;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x + BASE_W / 2, y - 36);
+    ctx.lineTo(x + BASE_W + 10, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = pal.helmetShade;
+    ctx.beginPath();
+    ctx.moveTo(x + BASE_W / 2, y - 36);
+    ctx.lineTo(x + BASE_W + 10, y);
+    ctx.lineTo(x + BASE_W, y);
+    ctx.lineTo(x + BASE_W / 2 + 4, y - 28);
+    ctx.closePath();
+    ctx.fill();
+    // wall
+    ctx.fillStyle = C.baseWall;
+    ctx.fillRect(x, y, BASE_W, BASE_H);
+    ctx.fillStyle = C.baseWallShadow;
+    for (let i = 0; i < 6; i++) ctx.fillRect(x, y + 4 + i * 22, BASE_W, 1);
+    drawWindow(x + 14, y + 24, C.baseWindow);
+    drawWindow(x + BASE_W - 38, y + 24, C.baseWindow);
+    // door
+    ctx.fillStyle = C.baseDoor;
+    ctx.fillRect(x + BASE_W / 2 - 14, y + BASE_H - 50, 28, 50);
+    ctx.fillStyle = '#1a0e08';
+    ctx.fillRect(x + BASE_W / 2 - 14, y + BASE_H - 50, 28, 2);
+    ctx.fillRect(x + BASE_W / 2 - 14, y + BASE_H - 50, 2, 50);
+    ctx.fillRect(x + BASE_W / 2 + 12, y + BASE_H - 50, 2, 50);
+    ctx.fillStyle = '#2a1610';
+    ctx.fillRect(x + BASE_W / 2 - 10, y + BASE_H - 44, 20, 18);
+    ctx.fillRect(x + BASE_W / 2 - 10, y + BASE_H - 22, 20, 18);
+    // doorknob in their color
+    ctx.fillStyle = pal.helmet;
+    ctx.fillRect(x + BASE_W / 2 + 7, y + BASE_H - 26, 2, 2);
+    // small flag
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(x + BASE_W / 2 - 1, y - 50, 2, 14);
+    ctx.fillStyle = pal.helmet;
+    ctx.fillRect(x + BASE_W / 2 + 1, y - 50, 10, 6);
   }
 
   function drawMountains(parallax, baseY, color, camX) {
@@ -1230,6 +1388,25 @@
     // dust particles
     drawDust();
 
+    // remote players in the shaft — position by depth relative to us
+    const remoteIds2 = Object.keys(net.remotePlayers);
+    for (let i = 0; i < remoteIds2.length; i++) {
+      const sid = remoteIds2[i];
+      const rp = net.remotePlayers[sid];
+      if (!rp || !rp.depth || rp.depth <= 0 || rp.alive === false) continue;
+      const screenY = PLAYER_SHAFT_Y + (rp.depth - game.depth);
+      if (screenY < -40 || screenY > H + 40) continue;
+      const pal = paletteFor(sid);
+      drawMiner(rp.x, screenY, {
+        walkPhase: 0,
+        facing: 1,
+        carryCount: (rp.carrying || []).length,
+        mode: 'shaft',
+        tint: pal,
+      });
+      pixelText('P' + (i + 2), rp.x + 8, screenY - 14, 10, pal.helmet, 'center');
+    }
+
     // player
     const p = game.player;
     const ascending = input('w') || input('arrowup');
@@ -1462,6 +1639,14 @@
     // controls hint at bottom
     panel(W / 2 - 200, H - 30, 400, 24);
     pixelText('[WASD/ARROWS] move  [W/UP] enter  [S/DOWN] descend', W / 2, H - 26, 11, C.textDim, 'center');
+
+    // multiplayer status
+    const online = 1 + Object.keys(net.remotePlayers).length;
+    const status = net.connected ? `ONLINE  ${online} player${online > 1 ? 's' : ''}` : 'OFFLINE';
+    panel(8, H - 30, 160, 24);
+    ctx.fillStyle = net.connected ? '#5fdc5f' : '#dc5f5f';
+    ctx.fillRect(16, H - 22, 8, 8);
+    pixelText(status, 30, H - 26, 11, '#fff');
   }
 
   function drawShaftHUD() {
@@ -1939,8 +2124,11 @@
     ctx.fillRect(0, 0, W, H);
   }
 
+  initNetwork();
+
   setInterval(() => {
     update();
+    sendUpdate();
     draw();
     mouse.clicked = false;
   }, 1000 / 20);
