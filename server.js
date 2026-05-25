@@ -5,7 +5,11 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, {
+  cors: { origin: '*' },
+  pingTimeout: 8000,
+  pingInterval: 3000,
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -51,6 +55,14 @@ function weightCost() {
 
 io.on('connection', (socket) => {
   socket.on('player_join', () => {
+    // sweep ghosts: any player whose socket isn't actually connected anymore
+    const activeSids = new Set(Array.from(io.sockets.sockets.keys()));
+    for (const sid in gameState.players) {
+      if (!activeSids.has(sid)) {
+        console.log(`[cleanup] removed ghost ${sid}`);
+        delete gameState.players[sid];
+      }
+    }
     gameState.players[socket.id] = {
       x: SPAWN.x,
       y: SPAWN.y,

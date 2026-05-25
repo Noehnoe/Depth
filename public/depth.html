@@ -166,6 +166,70 @@
   canvas.addEventListener('mousedown', e => { mouse.down = true; mouse.clicked = true; });
   canvas.addEventListener('mouseup', e => { mouse.down = false; });
 
+  // ---------- TOUCH ----------
+  const touch = { mode: false, active: {} };
+  const TOUCH_BTN_KEY = { left: 'a', right: 'd', up: 'w', down: 's', grab: ' ' };
+
+  function touchPos(t) {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: (t.clientX - r.left) * (W / r.width),
+      y: (t.clientY - r.top) * (H / r.height),
+    };
+  }
+  function touchButtonAt(x, y) {
+    if (!touch.mode) return null;
+    if (game.scene !== 'surface' && game.scene !== 'shaft') return null;
+    const inR = (rx, ry, rw, rh) => x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+    if (inR(10, H - 90, 70, 70)) return 'left';
+    if (inR(90, H - 90, 70, 70)) return 'right';
+    if (inR(W - 90, H - 180, 70, 70)) return 'up';
+    if (inR(W - 90, H - 90, 70, 70)) return 'down';
+    if (inR(W - 170, H - 90, 70, 70)) return 'grab';
+    return null;
+  }
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    touch.mode = true;
+    for (const t of e.changedTouches) {
+      const pos = touchPos(t);
+      const btn = touchButtonAt(pos.x, pos.y);
+      touch.active[t.identifier] = { x: pos.x, y: pos.y, button: btn };
+      if (btn) {
+        const k = TOUCH_BTN_KEY[btn];
+        if (!keys[k]) justPressed[k] = true;
+        keys[k] = true;
+      } else {
+        mouse.x = pos.x; mouse.y = pos.y;
+        mouse.down = true; mouse.clicked = true;
+      }
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const pos = touchPos(t);
+      const a = touch.active[t.identifier];
+      if (!a) continue;
+      a.x = pos.x; a.y = pos.y;
+      if (!a.button) { mouse.x = pos.x; mouse.y = pos.y; }
+    }
+  }, { passive: false });
+  function releaseTouch(id) {
+    const a = touch.active[id];
+    if (!a) return;
+    if (a.button) keys[TOUCH_BTN_KEY[a.button]] = false;
+    else mouse.down = false;
+    delete touch.active[id];
+  }
+  canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) releaseTouch(t.identifier);
+  }, { passive: false });
+  canvas.addEventListener('touchcancel', e => {
+    for (const t of e.changedTouches) releaseTouch(t.identifier);
+  });
+
   function input(name) { return keys[name]; }
 
   // ---------- GAME STATE ----------
@@ -2122,6 +2186,29 @@
     vg.addColorStop(1, 'rgba(0,0,0,0.5)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, W, H);
+
+    drawTouchButtons();
+  }
+
+  function drawTouchButtons() {
+    if (!touch.mode) return;
+    if (game.scene !== 'surface' && game.scene !== 'shaft') return;
+    const drawBtn = (x, y, w, h, label, key, big = false) => {
+      const pressed = keys[key];
+      ctx.fillStyle = pressed ? 'rgba(80,60,160,0.75)' : 'rgba(20,15,40,0.55)';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = pressed ? '#c0a0ff' : '#5a3aa0';
+      ctx.fillRect(x, y, w, 3);
+      ctx.fillRect(x, y + h - 3, w, 3);
+      ctx.fillRect(x, y, 3, h);
+      ctx.fillRect(x + w - 3, y, 3, h);
+      pixelText(label, x + w / 2, y + h / 2 - (big ? 8 : 10), big ? 16 : 22, '#fff', 'center');
+    };
+    drawBtn(10, H - 90, 70, 70, '<', 'a');
+    drawBtn(90, H - 90, 70, 70, '>', 'd');
+    drawBtn(W - 90, H - 180, 70, 70, '^', 'w');
+    drawBtn(W - 90, H - 90, 70, 70, 'v', 's');
+    drawBtn(W - 170, H - 90, 70, 70, 'GRAB', ' ', true);
   }
 
   initNetwork();
