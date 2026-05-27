@@ -2278,7 +2278,8 @@
     pixelText('click empty slot to place, click ore to take it back', W / 2, 42, 12, C.textDim, 'center');
     pixelText('total income: +$' + passiveIncome() + '/s', W / 2, 60, 14, C.textHi, 'center');
 
-    // SCROLLABLE FIXED-SIZE GRID
+    // GROWS-DOWN GRID: first several upgrades take up the empty vertical space
+    // (no scroll), then beyond the cap rows scroll inside the viewport.
     const slotCount = placedSlotCount();
     if (game.placed.length < slotCount) {
       const extra = slotCount - game.placed.length;
@@ -2287,13 +2288,21 @@
     const cols = 6;
     const totalRows = Math.ceil(slotCount / cols);
     const gap = 8;
-    const slotSize = 80;
-    const visibleRows = 2;
+    const gridY = 100;
+    // grid ends just above the action buttons row (we keep buttons at H-130).
+    const gridBottomLimit = H - 130 - 12;
+    const availH = gridBottomLimit - gridY;
+    // Show up to 5 rows visible (= 30 slots = first 3 trove upgrades).
+    const MAX_VISIBLE = 5;
+    const visibleRows = Math.min(MAX_VISIBLE, totalRows);
+    let slotSize = 80;
+    if (visibleRows * (slotSize + gap) - gap > availH) {
+      slotSize = Math.max(48, Math.floor((availH + gap) / visibleRows) - gap);
+    }
     const viewportH = visibleRows * (slotSize + gap) - gap;
     const contentH = totalRows * (slotSize + gap) - gap;
     const gridW = cols * (slotSize + gap) - gap;
     const gridX = (W - gridW) / 2;
-    const gridY = 100;
     const maxScroll = Math.max(0, contentH - viewportH);
 
     // handle wheel scroll if hovering grid viewport
@@ -2351,29 +2360,41 @@
       ctx.fillRect(sx + 2, sy + 2, 1, slotSize - 4);
 
       const o = game.placed[i];
+      const sc = slotSize / 80;
+      const showLabels = slotSize >= 60;
       if (o) {
         const ot = ORE_TYPES[o];
+        const pedW = Math.round(44 * sc), pedH = Math.round(8 * sc);
+        const pedX = sx + Math.round((slotSize - pedW) / 2);
+        const pedY = sy + slotSize - Math.round(24 * sc);
         ctx.fillStyle = '#3a2210';
-        ctx.fillRect(sx + 18, sy + slotSize - 24, 44, 8);
+        ctx.fillRect(pedX, pedY, pedW, pedH);
         ctx.fillStyle = '#1a0e08';
-        ctx.fillRect(sx + 18, sy + slotSize - 16, 44, 2);
+        ctx.fillRect(pedX, pedY + pedH, pedW, 2);
         if (ot.glow) {
           const pulse = 0.6 + 0.3 * Math.sin(game.timeAcc * 3 + i);
           ctx.globalAlpha = 0.4 * pulse;
           ctx.fillStyle = ot.glow;
-          ctx.fillRect(sx + 10, sy + 16, 60, 30);
+          ctx.fillRect(sx + Math.round(10 * sc), sy + Math.round(16 * sc),
+                       Math.round(60 * sc), Math.round(30 * sc));
           ctx.globalAlpha = 1;
         }
+        const gemW = Math.max(10, Math.round(24 * sc));
+        const gemH = Math.max(8, Math.round(18 * sc));
+        const gemX = sx + Math.round((slotSize - gemW) / 2);
+        const gemY = sy + Math.round(slotSize * 0.27);
+        const edgeT = Math.max(2, Math.round(4 * sc));
         ctx.fillStyle = ot.color;
-        ctx.fillRect(sx + 28, sy + 22, 24, 18);
+        ctx.fillRect(gemX, gemY, gemW, gemH);
         ctx.fillStyle = ot.edge;
-        ctx.fillRect(sx + 28, sy + 36, 24, 4);
-        ctx.fillRect(sx + 48, sy + 22, 4, 18);
+        ctx.fillRect(gemX, gemY + gemH - edgeT, gemW, edgeT);
+        ctx.fillRect(gemX + gemW - edgeT, gemY, edgeT, gemH);
         ctx.fillStyle = ot.spec;
-        ctx.fillRect(sx + 30, sy + 24, 6, 3);
-        ctx.fillRect(sx + 30, sy + 24, 3, 6);
-        pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
-        pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+        ctx.fillRect(gemX + 2, gemY + 2, Math.max(3, Math.round(6 * sc)), Math.max(2, Math.round(3 * sc)));
+        if (showLabels) {
+          pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
+          pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+        }
         if (hovered && game.carried.length < game.carriedMax && !game.drag) {
           pixelText('take', sx + slotSize / 2, sy + 4, 9, '#ffe080', 'center');
         }
