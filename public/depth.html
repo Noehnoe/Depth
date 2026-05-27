@@ -395,10 +395,24 @@
     auth.token = data.token;
     auth.username = data.username;
     try { localStorage.setItem('depthAuth', JSON.stringify(auth)); } catch (e) {}
+    // wipe any leftover client-side economy so we don't briefly show prior data
+    resetLocalEconomy();
     hideLogin();
     game.scene = 'menu';
-    // connect to multiplayer once authenticated
     if (!net.sock) initNetwork();
+  }
+
+  // Reset everything the server owns to defaults — game_state will populate real values shortly.
+  function resetLocalEconomy() {
+    game.money = 40;
+    game.weights = 0;
+    game.belts = 0;
+    game.backpacks = 0;
+    game.carriedMax = 12;
+    game.oxygenMax = 100;
+    game.oxygen = 100;
+    game.carried = [];
+    game.placed = new Array(12).fill(null);
   }
   submitBtn.addEventListener('click', submitAuth);
   [userInput, passInput].forEach(el => {
@@ -484,6 +498,7 @@
     descentSpeedBase: 28,
     weights: 0,
     belts: 0,
+    backpacks: 0,
     oxygenMax: 100,
     oxygen: 100,
     carried: [],
@@ -543,6 +558,10 @@
       if (typeof state.money === 'number') game.money = state.money;
       if (typeof state.weights === 'number') game.weights = state.weights;
       if (typeof state.belts === 'number') game.belts = state.belts;
+      if (typeof state.backpacks === 'number') {
+        game.backpacks = state.backpacks;
+        game.carriedMax = carriedMaxFrom(state.backpacks);
+      }
       if (typeof state.oxygenTanks === 'number') {
         const newMax = 100 + state.oxygenTanks * 80;
         if (newMax !== game.oxygenMax) {
@@ -610,8 +629,11 @@
   function currentAscentSpeed() {
     return 15 * Math.pow(1.20, game.belts);
   }
-  function weightPrice() { return 15 + game.weights * 10; }
-  function beltPrice()   { return 20 + game.belts   * 10; }
+  function weightPrice()   { return 15 + game.weights   * 10; }
+  function beltPrice()     { return 20 + game.belts     * 10; }
+  function backpackPrice() { return 30 + game.backpacks * 20; }
+  function carriedMaxFrom(backpacks) { return 12 + backpacks * 6; }
+  const SELL_MULT = 5;
   function isOnline() { return net.connected && net.sock; }
 
   function passiveIncome() {
@@ -2117,24 +2139,44 @@
       }
     }
 
-    // PLACE BEST button — auto-optimizes the trove
-    if (button(W / 2 - 90, H - 130, 180, 26, 'PLACE BEST ORES')) {
-      placeBestOres();
+    // Action buttons row above the tray
+    if (button(W / 2 - 200, H - 130, 130, 26, 'PLACE BEST')) placeBestOres();
+    const sellAllValue = game.carried.reduce((s, t) => s + ORE_TYPES[t].value * SELL_MULT, 0);
+    if (button(W / 2 - 60, H - 130, 120, 26, `SELL ALL $${sellAllValue}`, game.carried.length > 0)) {
+      sellAllCarried();
     }
 
-    // carried ores tray at bottom
-    panel(W / 2 - 200, H - 96, 400, 60);
-    pixelText('CARRIED', W / 2 - 192, H - 90, 11, C.textDim);
-    for (let i = 0; i < game.carriedMax; i++) {
-      const cx = W / 2 - 184 + i * 30;
+    // carried ores tray — adapts width/slot-size to backpack-expanded capacity
+    const trayW = Math.max(400, 24 + game.carriedMax * 26);
+    const trayX = (W - trayW) / 2;
+    panel(trayX, H - 96, trayW, 60);
+    pixelText('CARRIED   (click ore to sell)', trayX + 8, H - 90, 11, C.textDim);
+    const slotsCount = game.carriedMax;
+    const usable = trayW - 16;
+    const stepW = Math.min(30, Math.floor(usable / slotsCount));
+    const slotPix = Math.max(12, stepW - 4);
+    for (let i = 0; i < slotsCount; i++) {
+      const cx = trayX + 8 + i * stepW;
       const cy = H - 70;
       ctx.fillStyle = '#1a1020';
-      ctx.fillRect(cx, cy, 24, 24);
+      ctx.fillRect(cx, cy, slotPix, slotPix);
       ctx.fillStyle = '#3a2a4a';
-      ctx.fillRect(cx, cy, 24, 1);
-      ctx.fillRect(cx, cy, 1, 24);
+      ctx.fillRect(cx, cy, slotPix, 1);
+      ctx.fillRect(cx, cy, 1, slotPix);
       if (i < game.carried.length) {
-        drawOreIcon(cx + 6, cy + 6, game.carried[i], 12);
+        const ore = game.carried[i];
+        const iconSize = Math.max(8, slotPix - 4);
+        const iconOff = (slotPix - iconSize) / 2;
+        drawOreIcon(cx + iconOff, cy + iconOff, ore, iconSize);
+        // hover to show sell hint + click to sell single
+        const hovered = mouse.x >= cx && mouse.x <= cx + slotPix && mouse.y >= cy && mouse.y <= cy + slotPix;
+        if (hovered) {
+          ctx.fillStyle = 'rgba(255,224,128,0.18)';
+          ctx.fillRect(cx, cy, slotPix, slotPix);
+          const value = ORE_TYPES[ore].value * SELL_MULT;
+          pixelText('$' + value, cx + slotPix / 2, cy - 12, 10, '#ffe080', 'center');
+          if (mouse.clicked) sellOreAt(i);
+        }
       }
     }
 
@@ -2143,13 +2185,35 @@
     drawCoin(W - 160, 24, 12);
     pixelText('$' + Math.floor(game.money), W - 140, 22, 14, '#fff');
 
-    // leave
     if (button(W - 140, H - 30, 120, 26, 'LEAVE [B]')) {
       game.scene = 'surface';
     }
     if (input('b') && justPressed['b'] !== undefined) {
       game.scene = 'surface';
     }
+  }
+
+  function sellOreAt(idx) {
+    if (idx < 0 || idx >= game.carried.length) return;
+    const ore = game.carried[idx];
+    if (isOnline()) {
+      net.sock.emit('sell_ores', { ores: [ore] });
+    } else {
+      game.money += ORE_TYPES[ore].value * SELL_MULT;
+    }
+    game.carried.splice(idx, 1);
+  }
+
+  function sellAllCarried() {
+    if (game.carried.length === 0) return;
+    const ores = game.carried.slice();
+    if (isOnline()) {
+      net.sock.emit('sell_ores', { ores });
+    } else {
+      const total = ores.reduce((s, t) => s + ORE_TYPES[t].value * SELL_MULT, 0);
+      game.money += total;
+    }
+    game.carried = [];
   }
 
   // ---------- SHOP ----------
@@ -2177,7 +2241,7 @@
     pixelText('$' + Math.floor(game.money), px + pw - 132, py + 64, 14, '#fff');
 
     // 3 items, 76px tall each
-    drawShopItem(px + 20, py + 96, pw - 40, 76, {
+    drawShopItem(px + 20, py + 88, pw - 40, 80, {
       icon: drawWeightIcon,
       title: 'IRON WEIGHT',
       desc: 'Makes descent 10% faster (each)',
@@ -2187,7 +2251,7 @@
       onBuy: () => buyItem('weight', weightPrice(), () => { game.weights++; }),
     });
 
-    drawShopItem(px + 20, py + 180, pw - 40, 76, {
+    drawShopItem(px + 20, py + 172, pw - 40, 80, {
       icon: drawBeltIcon,
       title: 'JET BELT',
       desc: 'Boosts ascent speed by 20% (each)',
@@ -2197,7 +2261,20 @@
       onBuy: () => buyItem('belt', beltPrice(), () => { game.belts++; }),
     });
 
-    drawShopItem(px + 20, py + 264, pw - 40, 76, {
+    drawShopItem(px + 20, py + 256, pw - 40, 80, {
+      icon: drawBackpackIcon,
+      title: 'BIGGER BACKPACK',
+      desc: 'Adds +6 ore carry slots (each)',
+      stat1: `OWNED: ${game.backpacks}`,
+      stat2: `CARRY: ${game.carriedMax} slots`,
+      cost: backpackPrice(),
+      onBuy: () => buyItem('backpack', backpackPrice(), () => {
+        game.backpacks++;
+        game.carriedMax = carriedMaxFrom(game.backpacks);
+      }),
+    });
+
+    drawShopItem(px + 20, py + 340, pw - 40, 80, {
       icon: drawO2Icon,
       title: 'OXYGEN TANK',
       desc: 'Adds +80 max O₂ and refills tank',
@@ -2229,6 +2306,33 @@
     applyLocal();
     // oxygen tank also refills locally
     if (serverName === 'oxygen') game.oxygen = game.oxygenMax;
+  }
+
+  function drawBackpackIcon(cx, cy) {
+    // backpack body
+    ctx.fillStyle = '#6a4828';
+    ctx.fillRect(cx - 14, cy - 14, 28, 26);
+    ctx.fillStyle = '#3a2a14';
+    ctx.fillRect(cx - 14, cy + 10, 28, 2);
+    // top flap
+    ctx.fillStyle = '#5a3a22';
+    ctx.fillRect(cx - 14, cy - 14, 28, 8);
+    ctx.fillStyle = '#3a2010';
+    ctx.fillRect(cx - 14, cy - 7, 28, 1);
+    // strap loop
+    ctx.fillStyle = '#3a2010';
+    ctx.fillRect(cx - 16, cy - 6, 2, 14);
+    ctx.fillRect(cx + 14, cy - 6, 2, 14);
+    // buckle
+    ctx.fillStyle = '#ffe080';
+    ctx.fillRect(cx - 3, cy + 2, 6, 4);
+    ctx.fillStyle = '#aa8020';
+    ctx.fillRect(cx - 3, cy + 4, 6, 2);
+    // pocket
+    ctx.fillStyle = '#4a2e1c';
+    ctx.fillRect(cx - 10, cy - 2, 20, 8);
+    ctx.fillStyle = '#3a2010';
+    ctx.fillRect(cx - 10, cy + 5, 20, 1);
   }
 
   function drawBeltIcon(cx, cy) {

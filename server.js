@@ -23,9 +23,22 @@ let users = {}; // username(lower) -> { username, salt, hash, sessions: [{token,
 
 try {
   users = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));
+  // back-fill gameData on accounts created before per-user economy existed
+  for (const key in users) ensureGameDataForLoadedUser(users[key]);
   console.log(`[users] loaded ${Object.keys(users).length} accounts from ${USERS_PATH}`);
 } catch (e) {
   console.log(`[users] no user file at ${USERS_PATH} — starting empty`);
+}
+// stub so it can be called before ensureGameData is defined (uses same logic)
+function ensureGameDataForLoadedUser(u) {
+  // defaultGameData / ORE_VALUES / PLACED_SLOTS exist by hoisting (function decls + const exists after this file fully evaluates).
+  // We only construct the default array; full validation runs again at runtime via ensureGameData.
+  if (!u.gameData) {
+    u.gameData = {
+      money: 40, weights: 0, belts: 0, backpacks: 0, oxygenTanks: 0,
+      placedOres: new Array(PLACED_SLOTS).fill(null), passiveIncome: 0,
+    };
+  }
 }
 
 let usersSaveTimer = null;
@@ -132,7 +145,10 @@ const WEIGHT_BASE_COST = 15;
 const WEIGHT_INCREMENT = 10;
 const BELT_BASE_COST = 20;
 const BELT_INCREMENT = 10;
+const BACKPACK_BASE_COST = 30;
+const BACKPACK_INCREMENT = 20;
 const OXYGEN_COST = 25;
+const SELL_MULT = 5;
 const MAX_ACTIVE_ORES = 30;
 const SHAFT_LEFT_X = 280;
 const SHAFT_RIGHT_X = 520;
@@ -150,72 +166,93 @@ const TIERS = [
   { tier: 5, type: 'crystal', value: 35, minDepth: 1400, maxDepth: 2000 },
 ];
 
+// Shared state — only ephemeral live data (positions, active shaft ores).
+// Economy (money, placed, weights, belts, backpacks, oxygen tanks) is PER-USER.
 const gameState = {
   players: {},
   ores: [],
-  placedOres: new Array(PLACED_SLOTS).fill(null),
-  money: 40,
-  passiveIncome: 0,
-  weights: 0,
-  belts: 0,
-  oxygenTanks: 0,
 };
 
-// ---------- persistence ----------
-function loadData() {
-  try {
-    const raw = fs.readFileSync(SAVE_PATH, 'utf8');
-    const saved = JSON.parse(raw);
-    if (typeof saved.money === 'number') gameState.money = saved.money;
-    if (typeof saved.weights === 'number') gameState.weights = saved.weights;
-    if (typeof saved.belts === 'number') gameState.belts = saved.belts;
-    if (typeof saved.oxygenTanks === 'number') gameState.oxygenTanks = saved.oxygenTanks;
-    if (Array.isArray(saved.placedOres)) {
-      const arr = saved.placedOres.slice(0, PLACED_SLOTS).map(t =>
-        (typeof t === 'string' && ORE_VALUES[t] !== undefined) ? t : null);
-      while (arr.length < PLACED_SLOTS) arr.push(null);
-      gameState.placedOres = arr;
-    }
-    console.log(`[load] restored game data from ${SAVE_PATH}`);
-  } catch (e) {
-    console.log(`[load] no save file at ${SAVE_PATH} — starting fresh`);
+function defaultGameData() {
+  return {
+    money: 40,
+    weights: 0,
+    belts: 0,
+    backpacks: 0,
+    oxygenTanks: 0,
+    placedOres: new Array(PLACED_SLOTS).fill(null),
+    passiveIncome: 0,
+  };
+}
+
+function ensureGameData(u) {
+  if (!u.gameData) {
+    u.gameData = defaultGameData();
+  } else {
+    const d = u.gameData;
+    if (typeof d.money !== 'number') d.money = 40;
+    if (typeof d.weights !== 'number') d.weights = 0;
+    if (typeof d.belts !== 'number') d.belts = 0;
+    if (typeof d.backpacks !== 'number') d.backpacks = 0;
+    if (typeof d.oxygenTanks !== 'number') d.oxygenTanks = 0;
+    if (!Array.isArray(d.placedOres)) d.placedOres = new Array(PLACED_SLOTS).fill(null);
+    while (d.placedOres.length < PLACED_SLOTS) d.placedOres.push(null);
+    if (d.placedOres.length > PLACED_SLOTS) d.placedOres = d.placedOres.slice(0, PLACED_SLOTS);
+    // sanitize placed ore types
+    d.placedOres = d.placedOres.map(t =>
+      (typeof t === 'string' && ORE_VALUES[t] !== undefined) ? t : null);
+    recalcPassiveIncome(d);
   }
 }
-loadData();
 
-let saveTimer = null;
-function scheduleSave() {
-  if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    const persist = {
-      money: gameState.money,
-      placedOres: gameState.placedOres,
-      weights: gameState.weights,
-      belts: gameState.belts,
-      oxygenTanks: gameState.oxygenTanks,
-    };
-    fs.writeFile(SAVE_PATH, JSON.stringify(persist, null, 2), (err) => {
-      if (err) console.error('[save] error:', err.message);
-    });
-  }, 3000);
+// Get a socket's gameData. Authenticated users use their saved user record;
+// anonymous sockets get an ephemeral, in-memory record that vanishes on disconnect.
+function gameDataFor(socket) {
+  const uname = socket.data && socket.data.username;
+  if (uname) {
+    const u = users[uname.toLowerCase()];
+    if (u) { ensureGameData(u); return u.gameData; }
+  }
+  if (!socket.data) socket.data = {};
+  if (!socket.data.anonGameData) socket.data.anonGameData = defaultGameData();
+  return socket.data.anonGameData;
 }
 
-function broadcastState() {
-  io.emit('game_state', gameState);
-}
-
-function recalcPassiveIncome() {
-  gameState.passiveIncome = gameState.placedOres.reduce(
+function recalcPassiveIncome(d) {
+  d.passiveIncome = d.placedOres.reduce(
     (s, t) => s + (t ? (ORE_VALUES[t] || 0) : 0), 0);
 }
-recalcPassiveIncome();
 
-function weightCost() {
-  return WEIGHT_BASE_COST + gameState.weights * WEIGHT_INCREMENT;
+function weightCost(d)   { return WEIGHT_BASE_COST   + d.weights   * WEIGHT_INCREMENT; }
+function beltCost(d)     { return BELT_BASE_COST     + d.belts     * BELT_INCREMENT; }
+function backpackCost(d) { return BACKPACK_BASE_COST + d.backpacks * BACKPACK_INCREMENT; }
+
+// Send each connected socket their own per-user economy + the shared players list.
+function broadcastState() {
+  io.sockets.sockets.forEach((sock) => {
+    const d = gameDataFor(sock);
+    sock.emit('game_state', {
+      players: gameState.players,
+      ores: gameState.ores,
+      money: d.money,
+      passiveIncome: d.passiveIncome,
+      weights: d.weights,
+      belts: d.belts,
+      backpacks: d.backpacks,
+      oxygenTanks: d.oxygenTanks,
+      placedOres: d.placedOres,
+    });
+  });
 }
-function beltCost() {
-  return BELT_BASE_COST + gameState.belts * BELT_INCREMENT;
+
+// Persistence: only users.json is canonical now (it holds each user's gameData).
+// The old shared gamedata.json is no longer read or written.
+let saveTimer = null;
+function scheduleSave() {
+  // economy is per-user inside users.json, so just trigger users save
+  saveUsers();
+  // also clear any legacy timer if it existed
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
 }
 
 io.on('connection', (socket) => {
@@ -232,22 +269,25 @@ io.on('connection', (socket) => {
     let name = null;
     if (data.token) {
       const u = findUserByToken(data.token);
-      if (u) name = u.username;
+      if (u) { name = u.username; ensureGameData(u); }
     }
     if (!name && typeof data.username === 'string') {
-      // fallback for offline/anonymous play
       name = data.username.slice(0, 20).replace(/[^a-zA-Z0-9_-]/g, '') || null;
     }
+    socket.data = socket.data || {};
+    socket.data.username = name; // null for anon
+
+    const myData = gameDataFor(socket);
     gameState.players[socket.id] = {
       x: SPAWN.x,
       y: SPAWN.y,
       depth: SPAWN.depth,
       carrying: [],
-      oxygen: BASE_OXYGEN + OXYGEN_PER_TANK * gameState.oxygenTanks,
+      oxygen: BASE_OXYGEN + OXYGEN_PER_TANK * myData.oxygenTanks,
       alive: true,
       name: name || 'anon',
     };
-    console.log(`[join] player ${socket.id} (${Object.keys(gameState.players).length} online)`);
+    console.log(`[join] player ${socket.id} as ${name || 'anon'} (${Object.keys(gameState.players).length} online)`);
     broadcastState();
   });
 
@@ -259,7 +299,9 @@ io.on('connection', (socket) => {
     if (typeof data.depth === 'number') p.depth = data.depth;
     if (typeof data.oxygen === 'number') p.oxygen = data.oxygen;
     if (Array.isArray(data.carrying)) p.carrying = data.carrying;
-    socket.broadcast.emit('game_state', gameState);
+    // Light broadcast: only positions changed, full per-socket state is heavier.
+    // Sending the full state per socket keeps things consistent without extra event types.
+    broadcastState();
   });
 
   socket.on('ore_grabbed', ({ oreId } = {}) => {
@@ -270,48 +312,68 @@ io.on('connection', (socket) => {
   });
 
   socket.on('ore_placed', ({ ore } = {}) => {
+    const d = gameDataFor(socket);
     if (!ore) return;
     const type = typeof ore === 'string' ? ore : ore.type;
     if (!type || ORE_VALUES[type] === undefined) return;
-    const idx = gameState.placedOres.findIndex(s => s === null);
+    const idx = d.placedOres.findIndex(s => s === null);
     if (idx === -1) return;
-    gameState.placedOres[idx] = type;
-    recalcPassiveIncome();
+    d.placedOres[idx] = type;
+    recalcPassiveIncome(d);
     scheduleSave();
     broadcastState();
   });
 
-  // Canonical: client sends the full 12-slot array of type strings (or null) on any change
   socket.on('set_all_placed', ({ placed } = {}) => {
+    const d = gameDataFor(socket);
     if (!Array.isArray(placed)) return;
     const safe = new Array(PLACED_SLOTS).fill(null);
     for (let i = 0; i < Math.min(PLACED_SLOTS, placed.length); i++) {
       const t = placed[i];
       if (typeof t === 'string' && ORE_VALUES[t] !== undefined) safe[i] = t;
     }
-    gameState.placedOres = safe;
-    recalcPassiveIncome();
+    d.placedOres = safe;
+    recalcPassiveIncome(d);
     scheduleSave();
     broadcastState();
   });
 
   socket.on('purchase', ({ item } = {}) => {
+    const d = gameDataFor(socket);
     let cost;
-    if (item === 'weight') cost = weightCost();
-    else if (item === 'belt') cost = beltCost();
+    if (item === 'weight') cost = weightCost(d);
+    else if (item === 'belt') cost = beltCost(d);
+    else if (item === 'backpack') cost = backpackCost(d);
     else if (item === 'oxygen') cost = OXYGEN_COST;
     else return;
 
-    if (gameState.money < cost) {
+    if (d.money < cost) {
       socket.emit('purchase_failed', { item, cost, reason: 'insufficient_funds' });
       return;
     }
 
-    gameState.money -= cost;
-    if (item === 'weight') gameState.weights++;
-    else if (item === 'belt') gameState.belts++;
-    else if (item === 'oxygen') gameState.oxygenTanks++;
-    console.log(`[purchase] ${socket.id} bought ${item} for $${cost}`);
+    d.money -= cost;
+    if (item === 'weight') d.weights++;
+    else if (item === 'belt') d.belts++;
+    else if (item === 'backpack') d.backpacks++;
+    else if (item === 'oxygen') d.oxygenTanks++;
+    console.log(`[purchase] ${socket.data && socket.data.username || socket.id} bought ${item} for $${cost}`);
+    scheduleSave();
+    broadcastState();
+  });
+
+  socket.on('sell_ores', ({ ores } = {}) => {
+    const d = gameDataFor(socket);
+    if (!Array.isArray(ores) || ores.length === 0) return;
+    let total = 0;
+    for (const t of ores) {
+      if (typeof t === 'string' && ORE_VALUES[t] !== undefined) {
+        total += ORE_VALUES[t] * SELL_MULT;
+      }
+    }
+    if (total <= 0) return;
+    d.money += total;
+    console.log(`[sell] ${socket.data && socket.data.username || socket.id} sold ${ores.length} ores for $${total}`);
     scheduleSave();
     broadcastState();
   });
@@ -334,7 +396,8 @@ io.on('connection', (socket) => {
     p.y = SPAWN.y;
     p.depth = SPAWN.depth;
     p.alive = true;
-    p.oxygen = BASE_OXYGEN + OXYGEN_PER_TANK * gameState.oxygenTanks;
+    const d = gameDataFor(socket);
+    p.oxygen = BASE_OXYGEN + OXYGEN_PER_TANK * d.oxygenTanks;
     broadcastState();
   });
 
@@ -345,12 +408,24 @@ io.on('connection', (socket) => {
   });
 });
 
-// passive income tick — every 1s
+// Passive income tick — every 1s. Each user earns from THEIR placed ores only.
 setInterval(() => {
-  if (gameState.passiveIncome > 0) {
-    gameState.money += gameState.passiveIncome;
-    scheduleSave();
+  let anyChange = false;
+  for (const key in users) {
+    const u = users[key];
+    if (!u.gameData) continue;
+    if (u.gameData.passiveIncome > 0) {
+      u.gameData.money += u.gameData.passiveIncome;
+      anyChange = true;
+    }
   }
+  // anon sockets also tick their ephemeral data
+  io.sockets.sockets.forEach((sock) => {
+    if (sock.data && sock.data.anonGameData && sock.data.anonGameData.passiveIncome > 0) {
+      sock.data.anonGameData.money += sock.data.anonGameData.passiveIncome;
+    }
+  });
+  if (anyChange) scheduleSave();
   broadcastState();
 }, 1000);
 
