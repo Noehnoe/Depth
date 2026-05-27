@@ -123,7 +123,25 @@ app.post('/api/me', (req, res) => {
   const { token } = req.body || {};
   const u = findUserByToken(token);
   if (!u) return res.status(401).json({ error: 'invalid token' });
-  res.json({ username: u.username });
+  res.json({ username: u.username, isAdmin: isAdminUser(u) });
+});
+
+// Admin: trigger a force-reload broadcast to every connected client.
+// First registered user is the default admin, or set ADMIN_USER env var.
+function isAdminUser(u) {
+  if (!u) return false;
+  if (process.env.ADMIN_USER) return u.username.toLowerCase() === process.env.ADMIN_USER.toLowerCase();
+  const sorted = Object.values(users).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  return sorted.length > 0 && sorted[0].username === u.username;
+}
+
+app.post('/api/admin/force_reload', (req, res) => {
+  const { token } = req.body || {};
+  const u = findUserByToken(token);
+  if (!u || !isAdminUser(u)) return res.status(403).json({ error: 'not admin' });
+  console.log(`[admin] ${u.username} broadcast force_reload`);
+  io.emit('force_reload', { by: u.username });
+  res.json({ ok: true });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -138,19 +156,52 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/leaderboards', (req, res) => {
+  const all = Object.values(users).filter(u => u.gameData);
+  const board = (key) => all
+    .map(u => ({ name: u.username, value: u.gameData[key] || 0 }))
+    .filter(e => e.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
+  res.json({
+    money: board('money'),
+    weights: board('weights'),
+    belts: board('belts'),
+    backpacks: board('backpacks'),
+    troveExpansions: board('troveExpansions'),
+    oxygenTanks: board('oxygenTanks'),
+  });
+});
+
+app.get('/api/visit', (req, res) => {
+  const username = (req.query.user || '').toString();
+  if (!username) return res.status(400).json({ error: 'username required' });
+  const u = users[username.toLowerCase()];
+  if (!u || !u.gameData) return res.status(404).json({ error: 'not found' });
+  res.json({
+    username: u.username,
+    placedOres: u.gameData.placedOres,
+    passiveIncome: u.gameData.passiveIncome,
+    money: u.gameData.money,
+    weights: u.gameData.weights,
+    belts: u.gameData.belts,
+    backpacks: u.gameData.backpacks,
+    troveExpansions: u.gameData.troveExpansions,
+    oxygenTanks: u.gameData.oxygenTanks,
+  });
+});
+
 const SPAWN = { x: 150, y: 300, depth: 0 };
 const BASE_OXYGEN = 100;
-const OXYGEN_PER_TANK = 80;
+const OXYGEN_PER_TANK = 16;     // nerfed from 80 (5x less)
+const PRICE_MULT = 1.2;          // each purchase costs 20% more than the last
 const WEIGHT_BASE_COST = 75;
-const WEIGHT_INCREMENT = 50;
 const BELT_BASE_COST = 100;
-const BELT_INCREMENT = 50;
 const BACKPACK_BASE_COST = 150;
-const BACKPACK_INCREMENT = 100;
 const TROVE_BASE_COST = 500;
-const TROVE_INCREMENT = 500;
+const OXYGEN_BASE_COST = 125;
 const TROVE_SLOTS_PER_UPGRADE = 6;
-const OXYGEN_COST = 125;
+const BACKPACK_SLOTS_PER_UPGRADE = 1; // nerfed from 6 (5x less)
 const SELL_MULT = 5;
 const MAX_ACTIVE_ORES = 30;
 const SHAFT_LEFT_X = 280;
@@ -160,28 +211,21 @@ const PLACED_SLOTS = 12;
 const SAVE_PATH = process.env.DATA_PATH || path.join(__dirname, 'gamedata.json');
 
 const ORE_VALUES = {
-  coal: 1, copper: 3, iron: 7, gold: 15, crystal: 35,
-  ruby: 80, sapphire: 180, emerald: 400, topaz: 900, diamond: 2000,
-  obsidian: 4500, mythril: 10000, plasma: 22000, voidstone: 50000, singularity: 110000,
+  // 5x nerfed values + 10 new endgame tiers
+  coal: 1, copper: 1, iron: 2, gold: 3, crystal: 7,
+  ruby: 16, sapphire: 36, emerald: 80, topaz: 180, diamond: 400,
+  obsidian: 900, mythril: 2000, plasma: 4400, voidstone: 10000, singularity: 22000,
+  // new tiers — exponential progression continues
+  stardust: 48000, nebula: 106000, quasar: 233000, pulsar: 513000, antimatter: 1130000,
+  darkmatter: 2500000, tachyon: 5400000, quantum: 12000000, infinity: 26000000, genesis: 58000000,
 };
 
-const TIERS = [
-  { tier: 1,  type: 'coal',        value: 1,      minDepth: 0,     maxDepth: 200   },
-  { tier: 2,  type: 'copper',      value: 3,      minDepth: 200,   maxDepth: 500   },
-  { tier: 3,  type: 'iron',        value: 7,      minDepth: 500,   maxDepth: 900   },
-  { tier: 4,  type: 'gold',        value: 15,     minDepth: 900,   maxDepth: 1400  },
-  { tier: 5,  type: 'crystal',     value: 35,     minDepth: 1400,  maxDepth: 2000  },
-  { tier: 6,  type: 'ruby',        value: 80,     minDepth: 2000,  maxDepth: 2700  },
-  { tier: 7,  type: 'sapphire',    value: 180,    minDepth: 2700,  maxDepth: 3500  },
-  { tier: 8,  type: 'emerald',     value: 400,    minDepth: 3500,  maxDepth: 4400  },
-  { tier: 9,  type: 'topaz',       value: 900,    minDepth: 4400,  maxDepth: 5400  },
-  { tier: 10, type: 'diamond',     value: 2000,   minDepth: 5400,  maxDepth: 6500  },
-  { tier: 11, type: 'obsidian',    value: 4500,   minDepth: 6500,  maxDepth: 7700  },
-  { tier: 12, type: 'mythril',     value: 10000,  minDepth: 7700,  maxDepth: 9000  },
-  { tier: 13, type: 'plasma',      value: 22000,  minDepth: 9000,  maxDepth: 10400 },
-  { tier: 14, type: 'voidstone',   value: 50000,  minDepth: 10400, maxDepth: 11900 },
-  { tier: 15, type: 'singularity', value: 110000, minDepth: 11900, maxDepth: 14000 },
-];
+const TIERS = Object.entries(ORE_VALUES).map(([type, value], i) => {
+  const minDepths = [0, 200, 500, 900, 1400, 2000, 2700, 3500, 4400, 5400,
+                     6500, 7700, 9000, 10400, 11900, 14000, 17000, 20500, 24500, 29000,
+                     34500, 41000, 49000, 59000, 72000];
+  return { tier: i + 1, type, value, minDepth: minDepths[i], maxDepth: minDepths[i + 1] || 100000 };
+});
 
 // Shared state — only ephemeral live data (positions, active shaft ores).
 // Economy (money, placed, weights, belts, backpacks, oxygen tanks) is PER-USER.
@@ -246,10 +290,11 @@ function recalcPassiveIncome(d) {
     (s, t) => s + (t ? (ORE_VALUES[t] || 0) : 0), 0);
 }
 
-function weightCost(d)   { return WEIGHT_BASE_COST   + d.weights         * WEIGHT_INCREMENT; }
-function beltCost(d)     { return BELT_BASE_COST     + d.belts           * BELT_INCREMENT; }
-function backpackCost(d) { return BACKPACK_BASE_COST + d.backpacks       * BACKPACK_INCREMENT; }
-function troveCost(d)    { return TROVE_BASE_COST    + d.troveExpansions * TROVE_INCREMENT; }
+function weightCost(d)   { return Math.ceil(WEIGHT_BASE_COST   * Math.pow(PRICE_MULT, d.weights        )); }
+function beltCost(d)     { return Math.ceil(BELT_BASE_COST     * Math.pow(PRICE_MULT, d.belts          )); }
+function backpackCost(d) { return Math.ceil(BACKPACK_BASE_COST * Math.pow(PRICE_MULT, d.backpacks      )); }
+function troveCost(d)    { return Math.ceil(TROVE_BASE_COST    * Math.pow(PRICE_MULT, d.troveExpansions)); }
+function oxygenCost(d)   { return Math.ceil(OXYGEN_BASE_COST   * Math.pow(PRICE_MULT, d.oxygenTanks    )); }
 
 // Send each connected socket their own per-user economy + the shared players list.
 function broadcastState() {
@@ -370,7 +415,7 @@ io.on('connection', (socket) => {
     else if (item === 'belt') cost = beltCost(d);
     else if (item === 'backpack') cost = backpackCost(d);
     else if (item === 'trove') cost = troveCost(d);
-    else if (item === 'oxygen') cost = OXYGEN_COST;
+    else if (item === 'oxygen') cost = oxygenCost(d);
     else return;
 
     if (d.money < cost) {

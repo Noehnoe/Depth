@@ -511,23 +511,34 @@
   const PLAYER_SHAFT_Y = 240;
 
   const ORE_TYPES = {
-    coal:        { color: '#3a3a3a', edge: '#1a1a1a', spec: '#6a6a6a', glow: null,      value: 1,      name: 'COAL' },
-    copper:      { color: '#d06820', edge: '#7a3a10', spec: '#ff9858', glow: null,      value: 3,      name: 'COPPER' },
-    iron:        { color: '#a8b8c8', edge: '#5868a0', spec: '#e0f0ff', glow: null,      value: 7,      name: 'IRON' },
-    gold:        { color: '#f0c040', edge: '#a8801a', spec: '#fff8a0', glow: '#fff080', value: 15,     name: 'GOLD' },
-    crystal:     { color: '#40e8e8', edge: '#1090a0', spec: '#e0ffff', glow: '#80fff0', value: 35,     name: 'CRYSTAL' },
-    ruby:        { color: '#e02838', edge: '#801018', spec: '#ff90a0', glow: '#ff5060', value: 80,     name: 'RUBY' },
-    sapphire:    { color: '#3850d8', edge: '#1828a0', spec: '#a0b0ff', glow: '#5078ff', value: 180,    name: 'SAPPHIRE' },
-    emerald:     { color: '#30c850', edge: '#187030', spec: '#a0f0a0', glow: '#50e070', value: 400,    name: 'EMERALD' },
-    topaz:       { color: '#ffa030', edge: '#a85020', spec: '#ffe080', glow: '#ffc060', value: 900,    name: 'TOPAZ' },
-    diamond:     { color: '#e8f4ff', edge: '#80b0d0', spec: '#ffffff', glow: '#ffffff', value: 2000,   name: 'DIAMOND' },
-    obsidian:    { color: '#202030', edge: '#080812', spec: '#5060a0', glow: '#7040c0', value: 4500,   name: 'OBSIDIAN' },
-    mythril:     { color: '#90e8f0', edge: '#3088a0', spec: '#ffffff', glow: '#a0f8ff', value: 10000,  name: 'MYTHRIL' },
-    plasma:      { color: '#ff40c8', edge: '#a01880', spec: '#ffa0e8', glow: '#ff60d8', value: 22000,  name: 'PLASMA' },
-    voidstone:   { color: '#381860', edge: '#0a0418', spec: '#a060ff', glow: '#7028c8', value: 50000,  name: 'VOID' },
-    singularity: { color: '#ffffff', edge: '#8040c0', spec: '#ffffff', glow: '#d0a0ff', value: 110000, name: 'SINGULARITY' },
+    coal:        { color: '#3a3a3a', edge: '#1a1a1a', spec: '#6a6a6a', glow: null,      value: 1,        name: 'COAL' },
+    copper:      { color: '#d06820', edge: '#7a3a10', spec: '#ff9858', glow: null,      value: 1,        name: 'COPPER' },
+    iron:        { color: '#a8b8c8', edge: '#5868a0', spec: '#e0f0ff', glow: null,      value: 2,        name: 'IRON' },
+    gold:        { color: '#f0c040', edge: '#a8801a', spec: '#fff8a0', glow: '#fff080', value: 3,        name: 'GOLD' },
+    crystal:     { color: '#40e8e8', edge: '#1090a0', spec: '#e0ffff', glow: '#80fff0', value: 7,        name: 'CRYSTAL' },
+    ruby:        { color: '#e02838', edge: '#801018', spec: '#ff90a0', glow: '#ff5060', value: 16,       name: 'RUBY' },
+    sapphire:    { color: '#3850d8', edge: '#1828a0', spec: '#a0b0ff', glow: '#5078ff', value: 36,       name: 'SAPPHIRE' },
+    emerald:     { color: '#30c850', edge: '#187030', spec: '#a0f0a0', glow: '#50e070', value: 80,       name: 'EMERALD' },
+    topaz:       { color: '#ffa030', edge: '#a85020', spec: '#ffe080', glow: '#ffc060', value: 180,      name: 'TOPAZ' },
+    diamond:     { color: '#e8f4ff', edge: '#80b0d0', spec: '#ffffff', glow: '#ffffff', value: 400,      name: 'DIAMOND' },
+    obsidian:    { color: '#202030', edge: '#080812', spec: '#5060a0', glow: '#7040c0', value: 900,      name: 'OBSIDIAN' },
+    mythril:     { color: '#90e8f0', edge: '#3088a0', spec: '#ffffff', glow: '#a0f8ff', value: 2000,     name: 'MYTHRIL' },
+    plasma:      { color: '#ff40c8', edge: '#a01880', spec: '#ffa0e8', glow: '#ff60d8', value: 4400,     name: 'PLASMA' },
+    voidstone:   { color: '#381860', edge: '#0a0418', spec: '#a060ff', glow: '#7028c8', value: 10000,    name: 'VOID' },
+    singularity: { color: '#ffffff', edge: '#8040c0', spec: '#ffffff', glow: '#d0a0ff', value: 22000,    name: 'SINGULARITY' },
+    // new ENDGAME tiers
+    stardust:    { color: '#ffffa0', edge: '#a0a040', spec: '#ffffff', glow: '#ffffa0', value: 48000,    name: 'STARDUST' },
+    nebula:      { color: '#ff80ff', edge: '#a040a0', spec: '#ffd0ff', glow: '#ff80ff', value: 106000,   name: 'NEBULA' },
+    quasar:      { color: '#80ffe8', edge: '#40a0a0', spec: '#ffffff', glow: '#80ffe8', value: 233000,   name: 'QUASAR' },
+    pulsar:      { color: '#8080ff', edge: '#4040a0', spec: '#d0d0ff', glow: '#8080ff', value: 513000,   name: 'PULSAR' },
+    antimatter:  { color: '#ff2020', edge: '#601010', spec: '#ffa040', glow: '#ff4040', value: 1130000,  name: 'ANTIMATTER' },
+    darkmatter:  { color: '#100018', edge: '#000000', spec: '#a060ff', glow: '#a060ff', value: 2500000,  name: 'DARKMATTER' },
+    tachyon:     { color: '#c0ff40', edge: '#608018', spec: '#ffffa0', glow: '#c0ff40', value: 5400000,  name: 'TACHYON' },
+    quantum:     { color: '#4080ff', edge: '#103080', spec: '#80c0ff', glow: '#80c0ff', value: 12000000, name: 'QUANTUM' },
+    infinity:    { color: '#ffffff', edge: '#a0a0c0', spec: '#ffffff', glow: '#ffe0ff', value: 26000000, name: 'INFINITY' },
+    genesis:     { color: '#ffd0a0', edge: '#a08060', spec: '#ffffff', glow: '#ffe0c0', value: 58000000, name: 'GENESIS' },
   };
-  // Ordered list for depth-based generation
+  // Ordered list for depth-based generation (deeper tiers appear later)
   const TIER_ORDER = [
     { type: 'coal',        minDepth: 0     },
     { type: 'copper',      minDepth: 200   },
@@ -544,6 +555,16 @@
     { type: 'plasma',      minDepth: 9000  },
     { type: 'voidstone',   minDepth: 10400 },
     { type: 'singularity', minDepth: 11900 },
+    { type: 'stardust',    minDepth: 14000 },
+    { type: 'nebula',      minDepth: 17000 },
+    { type: 'quasar',      minDepth: 20500 },
+    { type: 'pulsar',      minDepth: 24500 },
+    { type: 'antimatter',  minDepth: 29000 },
+    { type: 'darkmatter',  minDepth: 34500 },
+    { type: 'tachyon',     minDepth: 41000 },
+    { type: 'quantum',     minDepth: 49000 },
+    { type: 'infinity',    minDepth: 59000 },
+    { type: 'genesis',     minDepth: 72000 },
   ];
 
   const game = {
@@ -571,6 +592,9 @@
     troveExpansions: 0,
     oxygenMax: 100,
     oxygen: 100,
+    hp: 100,
+    maxHp: 100,
+    suffocating: false,
     carried: [],
     carriedMax: 12,
     placed: new Array(12).fill(null),
@@ -636,7 +660,7 @@
       }
       if (typeof state.troveExpansions === 'number') game.troveExpansions = state.troveExpansions;
       if (typeof state.oxygenTanks === 'number') {
-        const newMax = 100 + state.oxygenTanks * 80;
+        const newMax = 100 + state.oxygenTanks * 16;
         if (newMax !== game.oxygenMax) {
           // grew or shrank — clamp oxygen but don't refill (refill happens on respawn/purchase locally)
           game.oxygenMax = newMax;
@@ -696,18 +720,25 @@
     return REMOTE_PALETTES[h % REMOTE_PALETTES.length];
   }
 
+  // Hard caps protect against runaway speeds when a player has stacked many upgrades —
+  // without this, depth jumps thousands of pixels per frame and the ore-generation loop
+  // iterates forever, freezing the tab.
+  const MAX_SPEED = 500;
   function currentDescentSpeed() {
-    return game.descentSpeedBase * Math.pow(1.10, game.weights);
+    return Math.min(MAX_SPEED, game.descentSpeedBase * Math.pow(1.02, game.weights));
   }
   function currentAscentSpeed() {
-    return 15 * Math.pow(1.20, game.belts);
+    return Math.min(MAX_SPEED, 15 * Math.pow(1.04, game.belts));
   }
-  function weightPrice()   { return 75  + game.weights         * 50; }
-  function beltPrice()     { return 100 + game.belts           * 50; }
-  function backpackPrice() { return 150 + game.backpacks       * 100; }
-  function trovePrice()    { return 500 + game.troveExpansions * 500; }
+  const PRICE_MULT = 1.2;
+  function weightPrice()   { return Math.ceil(75  * Math.pow(PRICE_MULT, game.weights        )); }
+  function beltPrice()     { return Math.ceil(100 * Math.pow(PRICE_MULT, game.belts          )); }
+  function backpackPrice() { return Math.ceil(150 * Math.pow(PRICE_MULT, game.backpacks      )); }
+  function trovePrice()    { return Math.ceil(500 * Math.pow(PRICE_MULT, game.troveExpansions)); }
+  function oxygenPrice()   { return Math.ceil(125 * Math.pow(PRICE_MULT, oxygenTankCount()    )); }
+  function oxygenTankCount() { return Math.max(0, Math.round((game.oxygenMax - 100) / 16)); }
   function placedSlotCount() { return 12 + game.troveExpansions * 6; }
-  function carriedMaxFrom(backpacks) { return 12 + backpacks * 6; }
+  function carriedMaxFrom(backpacks) { return 12 + backpacks * 1; }
   const SELL_MULT = 5;
   function isOnline() { return net.connected && net.sock; }
 
@@ -730,25 +761,57 @@
   }
 
   // ---------- ORE GENERATION ----------
+  // New distribution: rare high-tier ores, occasional LUCKY drops from much deeper tiers.
+  // 55% standard (current deepest tier), 40% any shallower tier, 5% LUCKY (deeper tier).
+  // Within shallow & lucky picks, closer-to-current is much more likely than far-away.
   function pickOreTypeForDepth(d) {
-    // find deepest available tier
     let deepest = 0;
     for (let i = 0; i < TIER_ORDER.length; i++) {
       if (d >= TIER_ORDER[i].minDepth) deepest = i;
     }
-    // weighted: deepest is most common, each step up halves the chance
-    let total = 0;
-    for (let i = 0; i <= deepest; i++) total += Math.pow(0.5, deepest - i);
-    let r = Math.random() * total;
-    for (let i = 0; i <= deepest; i++) {
-      r -= Math.pow(0.5, deepest - i);
-      if (r <= 0) return TIER_ORDER[i].type;
+    const roll = Math.random();
+    if (roll < 0.55 || (deepest === 0 && roll < 0.95)) {
+      return TIER_ORDER[deepest].type;
     }
-    return TIER_ORDER[deepest].type;
+    if (roll < 0.95 && deepest > 0) {
+      // pick a shallower tier, weighted toward closer (deeper) tiers
+      let total = 0;
+      for (let i = 0; i < deepest; i++) total += Math.pow(0.6, deepest - 1 - i);
+      let r = Math.random() * total;
+      for (let i = deepest - 1; i >= 0; i--) {
+        r -= Math.pow(0.6, deepest - 1 - i);
+        if (r <= 0) return TIER_ORDER[i].type;
+      }
+      return TIER_ORDER[0].type;
+    }
+    // 5% LUCKY drop — pick from deeper tiers that you wouldn't normally see
+    const remaining = TIER_ORDER.length - 1 - deepest;
+    if (remaining <= 0) return TIER_ORDER[deepest].type;
+    // bias: 50% the next-deeper tier, 25% the one after, etc.
+    let acc = 0;
+    let bias = [];
+    for (let i = 0; i < remaining; i++) {
+      const w = Math.pow(0.5, i);
+      bias.push(w);
+      acc += w;
+    }
+    let r2 = Math.random() * acc;
+    for (let i = 0; i < remaining; i++) {
+      r2 -= bias[i];
+      if (r2 <= 0) return TIER_ORDER[deepest + 1 + i].type;
+    }
+    return TIER_ORDER[deepest + 1].type;
   }
 
   function maybeGenerateOres() {
-    while (game.lastClusterDepth + 50 <= game.depth + 200) {
+    // crash guard: if depth jumped massively (e.g. broken save with absurd speeds),
+    // fast-forward instead of looping millions of times.
+    if (game.depth - game.lastClusterDepth > 5000) {
+      game.lastClusterDepth = game.depth - 200;
+    }
+    let iter = 0;
+    while (game.lastClusterDepth + 50 <= game.depth + 200 && iter < 200) {
+      iter++;
       game.lastClusterDepth += 50;
       const d = game.lastClusterDepth;
       const type = pickOreTypeForDepth(d);
@@ -756,12 +819,15 @@
       const count = 3 + Math.floor(Math.random() * 4);
       const ores = [];
       for (let i = 0; i < count; i++) {
-        // ox: how much the ore sticks out (small range so it always pokes into the shaft)
         const ox = (Math.random() * 4) | 0;
         const oy = i * 8 + (Math.random() * 2 | 0);
         ores.push({ ox, oy, collected: false });
       }
       game.oreClusters.push({ depth: d, side, type, ores });
+    }
+    if (iter >= 200) {
+      // safety: catch up entirely so we never loop again next frame
+      game.lastClusterDepth = game.depth + 200;
     }
     game.oreClusters = game.oreClusters.filter(c => c.depth > game.depth - 400);
   }
@@ -1135,11 +1201,13 @@
     game.player.vy = 0;
     game.depth = 0;
     game.oxygen = game.oxygenMax;
+    game.hp = game.maxHp;
+    game.suffocating = false;
     game.lastClusterDepth = 0;
     game.oreClusters = [];
     game.particles = [];
     game.dustParticles = [];
-    game.milestones = { 200: false, 500: false, 900: false, 1400: false };
+    game.milestones = {};
     maybeGenerateOres();
   }
 
@@ -1149,6 +1217,10 @@
     game.player.y = SURFACE_GROUND_Y - game.player.h;
     game.player.vx = 0;
     game.player.vy = 0;
+    // surfacing fully restores HP and oxygen
+    game.hp = game.maxHp;
+    game.oxygen = game.oxygenMax;
+    game.suffocating = false;
   }
 
   // ---------- SHAFT UPDATE ----------
@@ -1192,8 +1264,21 @@
     if (game.depth < 0) { game.depth = 0; exitShaftToSurface(); return; }
     if (game.depth > game.maxDepth) game.maxDepth = game.depth;
 
-    game.oxygen -= 4 * dt;
-    if (game.oxygen <= 0) { game.oxygen = 0; die(); return; }
+    if (game.oxygen > 0) {
+      game.oxygen -= 4 * dt;
+      game.suffocating = false;
+    }
+    if (game.oxygen <= 0) {
+      game.oxygen = 0;
+      game.suffocating = true;
+      // suffocating: 20 dmg/s for 5s = 100 dmg total → die
+      game.hp -= 20 * dt;
+      if (game.hp <= 0) {
+        game.hp = 0;
+        die();
+        return;
+      }
+    }
 
     if (Math.abs(p.vx) > 0.5) p.walkPhase += 0.5; else p.walkPhase *= 0.7;
 
@@ -2073,28 +2158,38 @@
     drawCoin(16, 18, 12);
     pixelText('$' + Math.floor(game.money), 36, 16, 16, '#fff');
 
-    // oxygen
+    // O2 + HP stacked
     const oxPct = game.oxygen / game.oxygenMax;
-    panel(W / 2 - 130, 8, 260, 32);
-    pixelText('O2', W / 2 - 120, 16, 14, '#fff');
-    const barX = W / 2 - 90, barY = 18, barW = 200, barH = 12;
+    const hpPct = game.hp / game.maxHp;
+    panel(W / 2 - 140, 6, 280, 54);
+    pixelText('O2', W / 2 - 130, 12, 12, '#fff');
+    const barX = W / 2 - 100, barW = 220, barH = 10;
+    // O2 bar
     ctx.fillStyle = '#1a1020';
-    ctx.fillRect(barX, barY, barW, barH);
-    let barColor = '#5fdc5f';
-    let barEdge = '#2a8a2a';
+    ctx.fillRect(barX, 14, barW, barH);
+    let oxColor = '#5fdc5f', oxEdge = '#2a8a2a';
     if (oxPct < 0.25) {
       const flash = (Math.floor(game.timeAcc * 6) % 2) === 0;
-      barColor = flash ? '#ff4040' : '#aa2020';
-      barEdge = '#5a0a0a';
-    } else if (oxPct < 0.5) { barColor = '#dcdc5f'; barEdge = '#8a8a2a'; }
-    ctx.fillStyle = barColor;
-    ctx.fillRect(barX + 1, barY + 1, (barW - 2) * oxPct, barH - 2);
-    ctx.fillStyle = barEdge;
-    ctx.fillRect(barX + 1, barY + barH - 3, (barW - 2) * oxPct, 2);
-    // tick marks
-    ctx.fillStyle = '#000';
-    for (let i = 1; i < 4; i++) {
-      ctx.fillRect(barX + (barW * i / 4) | 0, barY, 1, barH);
+      oxColor = flash ? '#ff4040' : '#aa2020';
+      oxEdge = '#5a0a0a';
+    } else if (oxPct < 0.5) { oxColor = '#dcdc5f'; oxEdge = '#8a8a2a'; }
+    ctx.fillStyle = oxColor;
+    ctx.fillRect(barX + 1, 15, (barW - 2) * oxPct, barH - 2);
+    ctx.fillStyle = oxEdge;
+    ctx.fillRect(barX + 1, 14 + barH - 3, (barW - 2) * oxPct, 2);
+    // HP bar
+    pixelText('HP', W / 2 - 130, 36, 12, '#fff');
+    ctx.fillStyle = '#1a1020';
+    ctx.fillRect(barX, 38, barW, barH);
+    const hpFlash = game.suffocating && (Math.floor(game.timeAcc * 8) % 2) === 0;
+    let hpColor = hpFlash ? '#ffaaaa' : '#ff4848';
+    if (hpPct < 0.25) hpColor = hpFlash ? '#ffffff' : '#ff2020';
+    ctx.fillStyle = hpColor;
+    ctx.fillRect(barX + 1, 39, (barW - 2) * hpPct, barH - 2);
+    ctx.fillStyle = '#7a1010';
+    ctx.fillRect(barX + 1, 38 + barH - 3, (barW - 2) * hpPct, 2);
+    if (game.suffocating) {
+      pixelText('SUFFOCATING!', W / 2 + 12, 36, 11, '#ff4040');
     }
 
     panel(W - 220, 8, 212, 32);
@@ -2491,7 +2586,7 @@
       stat2: `CURRENT: ${Math.floor(game.oxygen)}`,
       cost: game.oxygenPrice,
       onBuy: () => buyItem('oxygen', game.oxygenPrice, () => {
-        game.oxygenMax += 80;
+        game.oxygenMax += 16;
         game.oxygen = game.oxygenMax;
       }),
     });
@@ -2691,19 +2786,27 @@
     pixelText(auth.username || 'miner', W / 2, 214, 20, '#fff', 'center');
 
     // buttons
-    if (button(W / 2 - 130, 290, 260, 56, 'START GAME')) {
+    if (button(W / 2 - 130, 250, 260, 50, 'START GAME')) {
       game.scene = 'title';
     }
-    if (button(W / 2 - 130, 360, 260, 44, 'LOGOUT')) {
+    if (button(W / 2 - 130, 308, 260, 36, 'LEADERBOARDS')) {
+      openLeaderboards();
+    }
+    if (button(W / 2 - 130, 350, 260, 36, 'LOGOUT')) {
       logout();
+    }
+    if (auth.isAdmin) {
+      if (button(W / 2 - 130, 392, 260, 32, '⚡ FORCE RELOAD ALL ⚡')) {
+        adminForceReload();
+      }
     }
 
     // online count
     if (net.connected) {
       const count = 1 + Object.keys(net.remotePlayers).length;
-      pixelText(`. ${count} ONLINE`, W / 2, 430, 12, '#7fdc7f', 'center');
+      pixelText(`. ${count} ONLINE`, W / 2, 432, 12, '#7fdc7f', 'center');
     } else {
-      pixelText('connecting...', W / 2, 430, 12, C.textDim, 'center');
+      pixelText('connecting...', W / 2, 432, 12, C.textDim, 'center');
     }
 
     // miner walking
@@ -2714,10 +2817,101 @@
       mode: 'surface',
     });
 
-    pixelText('press [SPACE] to start  ·  [L] to logout', W / 2, H - 30, 11, C.textDim, 'center');
+    pixelText('[SPACE] start  ·  [L] logout', W / 2, H - 30, 11, C.textDim, 'center');
 
     if (input(' ') && game.timeAcc > 0.5) game.scene = 'title';
     if (justPressed['l']) logout();
+  }
+
+  // ---------- LEADERBOARDS ----------
+  let leaderboardCache = null;
+  let leaderboardTab = 'money';
+  let leaderboardLoading = false;
+  async function openLeaderboards() {
+    game.scene = 'leaderboards';
+    leaderboardLoading = true;
+    try {
+      const r = await fetch('/api/leaderboards');
+      leaderboardCache = await r.json();
+    } catch (e) { leaderboardCache = null; }
+    leaderboardLoading = false;
+  }
+
+  function drawLeaderboards() {
+    ctx.fillStyle = '#0a0820';
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = ['#0a0820', '#15123a', '#26204a', '#3a2c5a', '#5a3a6a'][i];
+      ctx.fillRect(0, i * 60, W, 60);
+    }
+    pixelText('LEADERBOARDS', W / 2, 40, 36, '#ffe080', 'center');
+
+    const tabs = [
+      { key: 'money',           label: 'MONEY'    },
+      { key: 'weights',         label: 'WEIGHTS'  },
+      { key: 'belts',           label: 'BELTS'    },
+      { key: 'backpacks',       label: 'BACKPACK' },
+      { key: 'troveExpansions', label: 'TROVE'    },
+      { key: 'oxygenTanks',     label: 'OXYGEN'   },
+    ];
+    const tabW = 110, tabH = 30, tabY = 90;
+    const tabsTotalW = tabs.length * (tabW + 4) - 4;
+    const tabsX0 = (W - tabsTotalW) / 2;
+    for (let i = 0; i < tabs.length; i++) {
+      const x = tabsX0 + i * (tabW + 4);
+      const active = leaderboardTab === tabs[i].key;
+      ctx.fillStyle = active ? '#3a1c5a' : '#1a1430';
+      ctx.fillRect(x, tabY, tabW, tabH);
+      ctx.fillStyle = active ? '#a880ff' : '#5a3aa0';
+      ctx.fillRect(x, tabY, tabW, 2);
+      ctx.fillRect(x, tabY + tabH - 2, tabW, 2);
+      pixelText(tabs[i].label, x + tabW / 2, tabY + 9, 11, active ? '#ffe080' : '#aaa', 'center');
+      if (mouse.x >= x && mouse.x <= x + tabW && mouse.y >= tabY && mouse.y <= tabY + tabH && mouse.clicked) {
+        leaderboardTab = tabs[i].key;
+      }
+    }
+
+    const listX = W / 2 - 200, listY = 140, listW = 400, listH = 360;
+    panel(listX, listY, listW, listH);
+    if (leaderboardLoading) {
+      pixelText('loading...', W / 2, listY + 30, 14, C.textDim, 'center');
+    } else if (!leaderboardCache || !leaderboardCache[leaderboardTab]) {
+      pixelText('no data', W / 2, listY + 30, 14, C.textDim, 'center');
+    } else {
+      const entries = leaderboardCache[leaderboardTab];
+      if (entries.length === 0) {
+        pixelText('no entries yet', W / 2, listY + 30, 14, C.textDim, 'center');
+      }
+      for (let i = 0; i < entries.length && i < 10; i++) {
+        const e = entries[i];
+        const row = listY + 14 + i * 32;
+        const isMe = auth.username && e.name.toLowerCase() === auth.username.toLowerCase();
+        ctx.fillStyle = isMe ? '#3a2c5a' : '#1a1020';
+        ctx.fillRect(listX + 8, row, listW - 16, 28);
+        ctx.fillStyle = i === 0 ? '#ffe080' : i === 1 ? '#c0c0c0' : i === 2 ? '#cc8050' : '#aaa';
+        pixelText('#' + (i + 1), listX + 20, row + 8, 14, ctx.fillStyle);
+        pixelText(e.name, listX + 60, row + 8, 13, isMe ? '#ffffff' : '#fff');
+        const valStr = leaderboardTab === 'money' ? '$' + Math.floor(e.value).toLocaleString() : String(e.value);
+        pixelText(valStr, listX + listW - 16, row + 8, 13, C.textHi, 'right');
+      }
+    }
+
+    if (button(W / 2 - 80, H - 50, 160, 32, 'BACK [B]')) {
+      game.scene = 'menu';
+    }
+    if (justPressed['b']) game.scene = 'menu';
+  }
+
+  async function adminForceReload() {
+    if (!auth.isAdmin || !auth.token) return;
+    if (!confirm('Force ALL players to reload? This may interrupt their game.')) return;
+    try {
+      await fetch('/api/admin/force_reload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: auth.token }),
+      });
+    } catch (e) { console.error(e); }
   }
 
   function drawTitle() {
@@ -2872,6 +3066,7 @@
     ctx.fillRect(0, 0, W, H);
 
     drawTouchButtons();
+    drawDepthBar();
   }
 
   function drawTouchButtons() {
@@ -2893,6 +3088,56 @@
     drawBtn(W - 90, H - 180, 70, 70, '^', 'w');
     drawBtn(W - 90, H - 90, 70, 70, 'v', 's');
     drawBtn(W - 170, H - 90, 70, 70, 'GRAB', ' ', true);
+  }
+
+  // depth bar on the right edge — log scale so deep tiers stay visible
+  function drawDepthBar() {
+    if (game.scene !== 'surface' && game.scene !== 'shaft') return;
+    const MAX_D = 80000;
+    const barX = W - 22, barY = 74, barW = 14, barH = H - 156;
+    const dToY = (d) => {
+      if (d <= 0) return barY;
+      const t = Math.log(d + 1) / Math.log(MAX_D + 1);
+      return barY + Math.min(1, t) * barH;
+    };
+    // bg panel
+    panel(barX - 4, barY - 16, barW + 8, barH + 32);
+    pixelText('DEPTH', barX + barW / 2, barY - 13, 9, '#fff', 'center');
+    // gradient inside (surface = brown, deep = black)
+    for (let i = 0; i < barH; i++) {
+      const t = i / barH;
+      const r = Math.round(58 * (1 - t));
+      const g = Math.round(40 * (1 - t));
+      const b = Math.round(28 * (1 - t));
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(barX, barY + i, barW, 1);
+    }
+    // markers for milestone depths
+    const marks = [200, 1400, 5400, 11900, 29000, 72000];
+    for (const m of marks) {
+      const my = dToY(m);
+      ctx.fillStyle = '#5a3a22';
+      ctx.fillRect(barX - 3, my, barW + 6, 1);
+      pixelText(m >= 1000 ? (m / 1000).toFixed(1) + 'k' : String(m),
+                barX - 6, my - 5, 7, '#aaa', 'right');
+    }
+    // remote players
+    for (const sid in net.remotePlayers) {
+      const rp = net.remotePlayers[sid];
+      if (!rp) continue;
+      const d = rp.depth || 0;
+      const ry = dToY(d);
+      const pal = paletteFor(sid);
+      ctx.fillStyle = pal.helmet;
+      ctx.fillRect(barX - 1, ry - 1, barW + 2, 3);
+    }
+    // own marker (always shown — surface = top)
+    const myD = game.scene === 'shaft' ? game.depth : 0;
+    const myY = dToY(myD);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(barX - 4, myY - 3, barW + 8, 6);
+    ctx.fillStyle = C.helmet;
+    ctx.fillRect(barX - 3, myY - 2, barW + 6, 4);
   }
 
   // gate: check existing session before booting; tryRestoreSession will move scene
