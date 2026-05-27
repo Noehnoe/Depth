@@ -9,8 +9,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*' },
-  pingTimeout: 8000,
-  pingInterval: 3000,
+  pingTimeout: 4000,
+  pingInterval: 2000,
 });
 
 app.use(express.json({ limit: '8kb' }));
@@ -484,6 +484,24 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 });
+
+// Ghost sweep — every 3s, drop any player whose socket isn't actually connected.
+// Without this, players who close their tab badly (mobile suspend, crash, etc.)
+// can linger floating mid-air for everyone else until the ping timeout.
+setInterval(() => {
+  const activeSids = new Set(Array.from(io.sockets.sockets.keys()));
+  let removed = 0;
+  for (const sid in gameState.players) {
+    if (!activeSids.has(sid)) {
+      delete gameState.players[sid];
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    console.log(`[sweep] removed ${removed} ghost(s)`);
+    broadcastState();
+  }
+}, 3000);
 
 // Passive income tick — every 1s. Each user earns from THEIR placed ores only.
 setInterval(() => {
