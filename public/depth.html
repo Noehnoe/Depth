@@ -174,6 +174,37 @@
     margin-top: 8px;
     min-height: 14px;
   }
+  #chatOverlay {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    z-index: 12;
+    width: min(540px, 90vw);
+    background: rgba(10,8,20,0.92);
+    border: 2px solid #5a3aa0;
+    box-shadow: 0 0 20px rgba(90,58,160,0.45);
+    padding: 6px 8px;
+    font-family: "Courier New", monospace;
+  }
+  #chatOverlay.show { display: flex; align-items: center; gap: 6px; }
+  #chatPrompt {
+    color: #ffe080;
+    font-weight: bold;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  #chatInput {
+    flex: 1;
+    background: #06030c;
+    color: #fff;
+    border: 1px solid #3a2a4a;
+    padding: 7px 9px;
+    font: 13px "Courier New", monospace;
+    outline: none;
+  }
+  #chatInput:focus { border-color: #a880ff; }
 </style>
 </head>
 <body>
@@ -192,6 +223,10 @@
     <button class="action" id="submitBtn">LOGIN</button>
     <div id="loginErr"></div>
   </div>
+</div>
+<div id="chatOverlay">
+  <span id="chatPrompt">SAY:</span>
+  <input id="chatInput" type="text" maxlength="200" autocomplete="off" />
 </div>
 <div id="adminPinOverlay">
   <div id="adminPinCard">
@@ -326,11 +361,22 @@
   const justPressed = {};
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
+    // If a text input is focused (chat, login, admin pin), let the input handle keys
+    // and don't propagate to the game.
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+    // T opens chat from any in-game scene
+    if (k === 't' && auth.username && !chatOverlay.classList.contains('show')) {
+      const okScenes = { surface:1, shaft:1, base:1, shop:1, menu:1, leaderboards:1, dead:1 };
+      if (okScenes[game.scene]) { chatOpen(); e.preventDefault(); return; }
+    }
     if (!keys[k]) justPressed[k] = true;
     keys[k] = true;
     if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
   });
   window.addEventListener('keyup', e => {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     keys[e.key.toLowerCase()] = false;
   });
 
@@ -766,6 +812,11 @@
     });
     net.sock.on('purchase_failed', (info) => {
       console.log('[purchase failed]', info);
+    });
+    net.sock.on('chat', (msg) => {
+      if (!msg || !msg.text) return;
+      chatMessages.push({ from: msg.from || '?', text: msg.text, ts: msg.ts || Date.now() });
+      while (chatMessages.length > CHAT_KEEP) chatMessages.shift();
     });
     net.sock.on('force_reload', (info) => {
       try {
@@ -3180,6 +3231,68 @@
     if (game.visit) game.visit.loading = false;
   }
 
+  // ---------- CHAT ----------
+  const chatOverlay = document.getElementById('chatOverlay');
+  const chatInput = document.getElementById('chatInput');
+  const chatMessages = []; // { from, text, ts }
+  const CHAT_VISIBLE_MS = 8000;
+  const CHAT_FADE_MS = 2000;
+  const CHAT_KEEP = 12; // max recent kept in memory
+
+  function chatOpen() {
+    if (!auth.username) return; // only logged in users
+    if (game.scene === 'login' || game.scene === 'boot') return;
+    chatOverlay.classList.add('show');
+    setTimeout(() => chatInput.focus(), 20);
+  }
+  function chatClose() {
+    chatOverlay.classList.remove('show');
+    chatInput.value = '';
+    chatInput.blur();
+  }
+  function chatSend() {
+    const t = chatInput.value.trim();
+    chatInput.value = '';
+    chatClose();
+    if (!t || !net.connected || !net.sock) return;
+    net.sock.emit('chat_message', { text: t });
+  }
+  chatInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { chatSend(); e.preventDefault(); }
+    else if (e.key === 'Escape') { chatClose(); e.preventDefault(); }
+  });
+  // Also stop key events while typing from leaking into game movement
+  chatInput.addEventListener('keyup', (e) => { e.stopPropagation(); });
+
+  function drawChatMessages() {
+    if (chatMessages.length === 0) return;
+    const now = Date.now();
+    // newest at bottom; render up to 8 most recent
+    const recent = chatMessages.slice(-8);
+    const baseY = H - 110 - (chatOverlay.classList.contains('show') ? 60 : 0);
+    for (let i = 0; i < recent.length; i++) {
+      const m = recent[i];
+      const age = now - m.ts;
+      if (age > CHAT_VISIBLE_MS + CHAT_FADE_MS) continue;
+      let alpha = 1;
+      if (age > CHAT_VISIBLE_MS) alpha = 1 - (age - CHAT_VISIBLE_MS) / CHAT_FADE_MS;
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      const y = baseY - (recent.length - 1 - i) * 16;
+      // bg
+      const fullText = `${m.from}: ${m.text}`;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(8, y, Math.min(W - 16, fullText.length * 7 + 16), 15);
+      // name
+      const isMe = auth.username && m.from === auth.username;
+      const nameColor = isMe ? '#ffe080' : '#a0c8ff';
+      pixelText(m.from, 12, y + 2, 11, nameColor);
+      pixelText(':', 12 + m.from.length * 7, y + 2, 11, '#aaa');
+      pixelText(m.text, 12 + m.from.length * 7 + 8, y + 2, 11, '#fff');
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ---------- ADMIN PANEL ----------
   const adminPinOverlay = document.getElementById('adminPinOverlay');
   const adminPinInput = document.getElementById('adminPinInput');
@@ -3467,6 +3580,7 @@
 
     drawTouchButtons();
     drawDepthBar();
+    drawChatMessages();
   }
 
   function drawTouchButtons() {

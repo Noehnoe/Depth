@@ -506,6 +506,18 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
+  socket.on('chat_message', ({ text } = {}) => {
+    const name = socket.data && socket.data.username;
+    if (!name) return; // anonymous sockets can't chat (spoofing protection)
+    const trimmed = String(text || '').slice(0, 200).trim();
+    if (!trimmed) return;
+    // strip control chars but keep punctuation/spaces/emoji
+    const clean = trimmed.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+    if (!clean) return;
+    console.log(`[chat] ${name}: ${clean}`);
+    io.emit('chat', { from: name, text: clean, ts: Date.now() });
+  });
+
   socket.on('disconnect', () => {
     delete gameState.players[socket.id];
     console.log(`[disconnect] player ${socket.id} (${Object.keys(gameState.players).length} online)`);
