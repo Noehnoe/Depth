@@ -470,12 +470,40 @@
   const PLAYER_SHAFT_Y = 240;
 
   const ORE_TYPES = {
-    coal:    { color: '#3a3a3a', edge: '#1a1a1a', spec: '#6a6a6a', glow: null,      value: 1,  name: 'COAL' },
-    copper:  { color: '#d06820', edge: '#7a3a10', spec: '#ff9858', glow: null,      value: 3,  name: 'COPPER' },
-    iron:    { color: '#a8b8c8', edge: '#5868a0', spec: '#e0f0ff', glow: null,      value: 7,  name: 'IRON' },
-    gold:    { color: '#f0c040', edge: '#a8801a', spec: '#fff8a0', glow: '#fff080', value: 15, name: 'GOLD' },
-    crystal: { color: '#40e8e8', edge: '#1090a0', spec: '#e0ffff', glow: '#80fff0', value: 35, name: 'CRYSTAL' },
+    coal:        { color: '#3a3a3a', edge: '#1a1a1a', spec: '#6a6a6a', glow: null,      value: 1,      name: 'COAL' },
+    copper:      { color: '#d06820', edge: '#7a3a10', spec: '#ff9858', glow: null,      value: 3,      name: 'COPPER' },
+    iron:        { color: '#a8b8c8', edge: '#5868a0', spec: '#e0f0ff', glow: null,      value: 7,      name: 'IRON' },
+    gold:        { color: '#f0c040', edge: '#a8801a', spec: '#fff8a0', glow: '#fff080', value: 15,     name: 'GOLD' },
+    crystal:     { color: '#40e8e8', edge: '#1090a0', spec: '#e0ffff', glow: '#80fff0', value: 35,     name: 'CRYSTAL' },
+    ruby:        { color: '#e02838', edge: '#801018', spec: '#ff90a0', glow: '#ff5060', value: 80,     name: 'RUBY' },
+    sapphire:    { color: '#3850d8', edge: '#1828a0', spec: '#a0b0ff', glow: '#5078ff', value: 180,    name: 'SAPPHIRE' },
+    emerald:     { color: '#30c850', edge: '#187030', spec: '#a0f0a0', glow: '#50e070', value: 400,    name: 'EMERALD' },
+    topaz:       { color: '#ffa030', edge: '#a85020', spec: '#ffe080', glow: '#ffc060', value: 900,    name: 'TOPAZ' },
+    diamond:     { color: '#e8f4ff', edge: '#80b0d0', spec: '#ffffff', glow: '#ffffff', value: 2000,   name: 'DIAMOND' },
+    obsidian:    { color: '#202030', edge: '#080812', spec: '#5060a0', glow: '#7040c0', value: 4500,   name: 'OBSIDIAN' },
+    mythril:     { color: '#90e8f0', edge: '#3088a0', spec: '#ffffff', glow: '#a0f8ff', value: 10000,  name: 'MYTHRIL' },
+    plasma:      { color: '#ff40c8', edge: '#a01880', spec: '#ffa0e8', glow: '#ff60d8', value: 22000,  name: 'PLASMA' },
+    voidstone:   { color: '#381860', edge: '#0a0418', spec: '#a060ff', glow: '#7028c8', value: 50000,  name: 'VOID' },
+    singularity: { color: '#ffffff', edge: '#8040c0', spec: '#ffffff', glow: '#d0a0ff', value: 110000, name: 'SINGULARITY' },
   };
+  // Ordered list for depth-based generation
+  const TIER_ORDER = [
+    { type: 'coal',        minDepth: 0     },
+    { type: 'copper',      minDepth: 200   },
+    { type: 'iron',        minDepth: 500   },
+    { type: 'gold',        minDepth: 900   },
+    { type: 'crystal',     minDepth: 1400  },
+    { type: 'ruby',        minDepth: 2000  },
+    { type: 'sapphire',    minDepth: 2700  },
+    { type: 'emerald',     minDepth: 3500  },
+    { type: 'topaz',       minDepth: 4400  },
+    { type: 'diamond',     minDepth: 5400  },
+    { type: 'obsidian',    minDepth: 6500  },
+    { type: 'mythril',     minDepth: 7700  },
+    { type: 'plasma',      minDepth: 9000  },
+    { type: 'voidstone',   minDepth: 10400 },
+    { type: 'singularity', minDepth: 11900 },
+  ];
 
   const game = {
     scene: 'boot',
@@ -508,11 +536,11 @@
     lastClusterDepth: 0,
     particles: [],
     dustParticles: [],
-    milestones: { 200: false, 500: false, 900: false, 1400: false },
+    milestones: {},
     milestoneMsg: null,
     screenShake: 0,
-    weightPrice: 15,
-    oxygenPrice: 25,
+    weightPrice: 75,
+    oxygenPrice: 125,
     wallPushTimer: { left: 0, right: 0 },
     timeAcc: 0,
     titleFlash: 0,
@@ -629,9 +657,9 @@
   function currentAscentSpeed() {
     return 15 * Math.pow(1.20, game.belts);
   }
-  function weightPrice()   { return 15 + game.weights   * 10; }
-  function beltPrice()     { return 20 + game.belts     * 10; }
-  function backpackPrice() { return 30 + game.backpacks * 20; }
+  function weightPrice()   { return 75  + game.weights   * 50; }
+  function beltPrice()     { return 100 + game.belts     * 50; }
+  function backpackPrice() { return 150 + game.backpacks * 100; }
   function carriedMaxFrom(backpacks) { return 12 + backpacks * 6; }
   const SELL_MULT = 5;
   function isOnline() { return net.connected && net.sock; }
@@ -654,20 +682,28 @@
   }
 
   // ---------- ORE GENERATION ----------
+  function pickOreTypeForDepth(d) {
+    // find deepest available tier
+    let deepest = 0;
+    for (let i = 0; i < TIER_ORDER.length; i++) {
+      if (d >= TIER_ORDER[i].minDepth) deepest = i;
+    }
+    // weighted: deepest is most common, each step up halves the chance
+    let total = 0;
+    for (let i = 0; i <= deepest; i++) total += Math.pow(0.5, deepest - i);
+    let r = Math.random() * total;
+    for (let i = 0; i <= deepest; i++) {
+      r -= Math.pow(0.5, deepest - i);
+      if (r <= 0) return TIER_ORDER[i].type;
+    }
+    return TIER_ORDER[deepest].type;
+  }
+
   function maybeGenerateOres() {
     while (game.lastClusterDepth + 50 <= game.depth + 200) {
       game.lastClusterDepth += 50;
       const d = game.lastClusterDepth;
-      const tiers = [];
-      if (d < 200) tiers.push(['coal', 1]);
-      else if (d < 500) tiers.push(['coal', 0.4], ['copper', 1]);
-      else if (d < 900) tiers.push(['coal', 0.2], ['copper', 0.5], ['iron', 1]);
-      else if (d < 1400) tiers.push(['coal', 0.1], ['copper', 0.25], ['iron', 0.5], ['gold', 1]);
-      else tiers.push(['coal', 0.05], ['copper', 0.15], ['iron', 0.3], ['gold', 0.6], ['crystal', 1]);
-      let total = 0; for (const t of tiers) total += t[1];
-      let r = Math.random() * total;
-      let type = tiers[0][0];
-      for (const t of tiers) { r -= t[1]; if (r <= 0) { type = t[0]; break; } }
+      const type = pickOreTypeForDepth(d);
       const side = Math.random() < 0.5 ? 'left' : 'right';
       const count = 3 + Math.floor(Math.random() * 4);
       const ores = [];
@@ -1145,16 +1181,27 @@
       }
     }
 
-    for (const m of [200, 500, 900, 1400]) {
-      if (!game.milestones[m] && game.depth >= m) {
-        game.milestones[m] = true;
-        const msgs = {
-          200: 'DEEPER...',
-          500: "IT'S GETTING DARK",
-          900: 'THE PRESSURE BUILDS',
-          1400: 'CRYSTAL DEPTHS',
-        };
-        game.milestoneMsg = { text: msgs[m], time: 2.2, maxTime: 2.2 };
+    const MILESTONES = {
+      200:   'DEEPER...',
+      500:   "IT'S GETTING DARK",
+      900:   'THE PRESSURE BUILDS',
+      1400:  'CRYSTAL DEPTHS',
+      2000:  'RUBY VEIN',
+      2700:  'SAPPHIRE WATERS',
+      3500:  'EMERALD ZONE',
+      4400:  'TOPAZ FIELDS',
+      5400:  'DIAMOND CORE',
+      6500:  'OBSIDIAN SHELF',
+      7700:  'MYTHRIL LAYER',
+      9000:  'PLASMA RIFT',
+      10400: 'THE VOID',
+      11900: 'SINGULARITY...',
+    };
+    for (const m in MILESTONES) {
+      const md = +m;
+      if (!game.milestones[md] && game.depth >= md) {
+        game.milestones[md] = true;
+        game.milestoneMsg = { text: MILESTONES[md], time: 2.2, maxTime: 2.2 };
       }
     }
     if (game.milestoneMsg) {

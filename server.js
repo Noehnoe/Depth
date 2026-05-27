@@ -141,13 +141,13 @@ app.post('/api/logout', (req, res) => {
 const SPAWN = { x: 150, y: 300, depth: 0 };
 const BASE_OXYGEN = 100;
 const OXYGEN_PER_TANK = 80;
-const WEIGHT_BASE_COST = 15;
-const WEIGHT_INCREMENT = 10;
-const BELT_BASE_COST = 20;
-const BELT_INCREMENT = 10;
-const BACKPACK_BASE_COST = 30;
-const BACKPACK_INCREMENT = 20;
-const OXYGEN_COST = 25;
+const WEIGHT_BASE_COST = 75;
+const WEIGHT_INCREMENT = 50;
+const BELT_BASE_COST = 100;
+const BELT_INCREMENT = 50;
+const BACKPACK_BASE_COST = 150;
+const BACKPACK_INCREMENT = 100;
+const OXYGEN_COST = 125;
 const SELL_MULT = 5;
 const MAX_ACTIVE_ORES = 30;
 const SHAFT_LEFT_X = 280;
@@ -156,14 +156,28 @@ const PLACED_SLOTS = 12;
 
 const SAVE_PATH = process.env.DATA_PATH || path.join(__dirname, 'gamedata.json');
 
-const ORE_VALUES = { coal: 1, copper: 3, iron: 7, gold: 15, crystal: 35 };
+const ORE_VALUES = {
+  coal: 1, copper: 3, iron: 7, gold: 15, crystal: 35,
+  ruby: 80, sapphire: 180, emerald: 400, topaz: 900, diamond: 2000,
+  obsidian: 4500, mythril: 10000, plasma: 22000, voidstone: 50000, singularity: 110000,
+};
 
 const TIERS = [
-  { tier: 1, type: 'coal',    value: 1,  minDepth: 0,    maxDepth: 200  },
-  { tier: 2, type: 'copper',  value: 3,  minDepth: 200,  maxDepth: 500  },
-  { tier: 3, type: 'iron',    value: 7,  minDepth: 500,  maxDepth: 900  },
-  { tier: 4, type: 'gold',    value: 15, minDepth: 900,  maxDepth: 1400 },
-  { tier: 5, type: 'crystal', value: 35, minDepth: 1400, maxDepth: 2000 },
+  { tier: 1,  type: 'coal',        value: 1,      minDepth: 0,     maxDepth: 200   },
+  { tier: 2,  type: 'copper',      value: 3,      minDepth: 200,   maxDepth: 500   },
+  { tier: 3,  type: 'iron',        value: 7,      minDepth: 500,   maxDepth: 900   },
+  { tier: 4,  type: 'gold',        value: 15,     minDepth: 900,   maxDepth: 1400  },
+  { tier: 5,  type: 'crystal',     value: 35,     minDepth: 1400,  maxDepth: 2000  },
+  { tier: 6,  type: 'ruby',        value: 80,     minDepth: 2000,  maxDepth: 2700  },
+  { tier: 7,  type: 'sapphire',    value: 180,    minDepth: 2700,  maxDepth: 3500  },
+  { tier: 8,  type: 'emerald',     value: 400,    minDepth: 3500,  maxDepth: 4400  },
+  { tier: 9,  type: 'topaz',       value: 900,    minDepth: 4400,  maxDepth: 5400  },
+  { tier: 10, type: 'diamond',     value: 2000,   minDepth: 5400,  maxDepth: 6500  },
+  { tier: 11, type: 'obsidian',    value: 4500,   minDepth: 6500,  maxDepth: 7700  },
+  { tier: 12, type: 'mythril',     value: 10000,  minDepth: 7700,  maxDepth: 9000  },
+  { tier: 13, type: 'plasma',      value: 22000,  minDepth: 9000,  maxDepth: 10400 },
+  { tier: 14, type: 'voidstone',   value: 50000,  minDepth: 10400, maxDepth: 11900 },
+  { tier: 15, type: 'singularity', value: 110000, minDepth: 11900, maxDepth: 14000 },
 ];
 
 // Shared state — only ephemeral live data (positions, active shaft ores).
