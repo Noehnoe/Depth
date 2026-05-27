@@ -1155,9 +1155,17 @@
     if (Math.abs(p.vx) < 0.1) p.vx = 0;
 
     if ((input('w') || input('arrowup') || input(' ')) && p.onGround) {
+      const upHeld = input('w') || input('arrowup');
       const intoBase = p.x + p.w > BASE_X && p.x < BASE_X + BASE_W;
       const intoShop = p.x + p.w > SHOP_X && p.x < SHOP_X + SHOP_W;
-      if (!(intoBase && (input('w') || input('arrowup'))) && !(intoShop && (input('w') || input('arrowup')))) {
+      // also suppress jump when in front of a remote player's house
+      let intoRemoteHouse = false;
+      const remoteIds = Object.keys(net.remotePlayers);
+      for (let i = 0; i < remoteIds.length; i++) {
+        const hx = remoteHouseX(i);
+        if (p.x + p.w > hx && p.x < hx + BASE_W) { intoRemoteHouse = true; break; }
+      }
+      if (!(intoBase && upHeld) && !(intoShop && upHeld) && !(intoRemoteHouse && upHeld)) {
         p.vy = -9;
         p.onGround = false;
       }
