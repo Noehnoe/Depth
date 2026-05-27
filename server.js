@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -18,39 +19,92 @@ const BASE_OXYGEN = 100;
 const OXYGEN_PER_TANK = 80;
 const WEIGHT_BASE_COST = 15;
 const WEIGHT_INCREMENT = 10;
+const BELT_BASE_COST = 20;
+const BELT_INCREMENT = 10;
 const OXYGEN_COST = 25;
 const MAX_ACTIVE_ORES = 30;
 const SHAFT_LEFT_X = 280;
 const SHAFT_RIGHT_X = 520;
+const PLACED_SLOTS = 12;
+
+const SAVE_PATH = process.env.DATA_PATH || path.join(__dirname, 'gamedata.json');
+
+const ORE_VALUES = { coal: 1, copper: 3, iron: 7, gold: 15, crystal: 35 };
 
 const TIERS = [
-  { tier: 1, value: 1,  minDepth: 0,    maxDepth: 200  },
-  { tier: 2, value: 3,  minDepth: 200,  maxDepth: 500  },
-  { tier: 3, value: 7,  minDepth: 500,  maxDepth: 900  },
-  { tier: 4, value: 15, minDepth: 900,  maxDepth: 1400 },
-  { tier: 5, value: 35, minDepth: 1400, maxDepth: 2000 },
+  { tier: 1, type: 'coal',    value: 1,  minDepth: 0,    maxDepth: 200  },
+  { tier: 2, type: 'copper',  value: 3,  minDepth: 200,  maxDepth: 500  },
+  { tier: 3, type: 'iron',    value: 7,  minDepth: 500,  maxDepth: 900  },
+  { tier: 4, type: 'gold',    value: 15, minDepth: 900,  maxDepth: 1400 },
+  { tier: 5, type: 'crystal', value: 35, minDepth: 1400, maxDepth: 2000 },
 ];
 
 const gameState = {
   players: {},
   ores: [],
-  placedOres: [],
+  placedOres: new Array(PLACED_SLOTS).fill(null),
   money: 40,
   passiveIncome: 0,
   weights: 0,
+  belts: 0,
   oxygenTanks: 0,
 };
+
+// ---------- persistence ----------
+function loadData() {
+  try {
+    const raw = fs.readFileSync(SAVE_PATH, 'utf8');
+    const saved = JSON.parse(raw);
+    if (typeof saved.money === 'number') gameState.money = saved.money;
+    if (typeof saved.weights === 'number') gameState.weights = saved.weights;
+    if (typeof saved.belts === 'number') gameState.belts = saved.belts;
+    if (typeof saved.oxygenTanks === 'number') gameState.oxygenTanks = saved.oxygenTanks;
+    if (Array.isArray(saved.placedOres)) {
+      const arr = saved.placedOres.slice(0, PLACED_SLOTS).map(t =>
+        (typeof t === 'string' && ORE_VALUES[t] !== undefined) ? t : null);
+      while (arr.length < PLACED_SLOTS) arr.push(null);
+      gameState.placedOres = arr;
+    }
+    console.log(`[load] restored game data from ${SAVE_PATH}`);
+  } catch (e) {
+    console.log(`[load] no save file at ${SAVE_PATH} — starting fresh`);
+  }
+}
+loadData();
+
+let saveTimer = null;
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const persist = {
+      money: gameState.money,
+      placedOres: gameState.placedOres,
+      weights: gameState.weights,
+      belts: gameState.belts,
+      oxygenTanks: gameState.oxygenTanks,
+    };
+    fs.writeFile(SAVE_PATH, JSON.stringify(persist, null, 2), (err) => {
+      if (err) console.error('[save] error:', err.message);
+    });
+  }, 3000);
+}
 
 function broadcastState() {
   io.emit('game_state', gameState);
 }
 
 function recalcPassiveIncome() {
-  gameState.passiveIncome = gameState.placedOres.reduce((s, o) => s + (o.value || 0), 0);
+  gameState.passiveIncome = gameState.placedOres.reduce(
+    (s, t) => s + (t ? (ORE_VALUES[t] || 0) : 0), 0);
 }
+recalcPassiveIncome();
 
 function weightCost() {
   return WEIGHT_BASE_COST + gameState.weights * WEIGHT_INCREMENT;
+}
+function beltCost() {
+  return BELT_BASE_COST + gameState.belts * BELT_INCREMENT;
 }
 
 io.on('connection', (socket) => {
@@ -94,18 +148,35 @@ io.on('connection', (socket) => {
   });
 
   socket.on('ore_placed', ({ ore } = {}) => {
-    if (!ore || typeof ore.value !== 'number') return;
-    gameState.placedOres.push({
-      tier: ore.tier,
-      value: ore.value,
-    });
+    if (!ore) return;
+    const type = typeof ore === 'string' ? ore : ore.type;
+    if (!type || ORE_VALUES[type] === undefined) return;
+    const idx = gameState.placedOres.findIndex(s => s === null);
+    if (idx === -1) return;
+    gameState.placedOres[idx] = type;
     recalcPassiveIncome();
+    scheduleSave();
+    broadcastState();
+  });
+
+  // Canonical: client sends the full 12-slot array of type strings (or null) on any change
+  socket.on('set_all_placed', ({ placed } = {}) => {
+    if (!Array.isArray(placed)) return;
+    const safe = new Array(PLACED_SLOTS).fill(null);
+    for (let i = 0; i < Math.min(PLACED_SLOTS, placed.length); i++) {
+      const t = placed[i];
+      if (typeof t === 'string' && ORE_VALUES[t] !== undefined) safe[i] = t;
+    }
+    gameState.placedOres = safe;
+    recalcPassiveIncome();
+    scheduleSave();
     broadcastState();
   });
 
   socket.on('purchase', ({ item } = {}) => {
     let cost;
     if (item === 'weight') cost = weightCost();
+    else if (item === 'belt') cost = beltCost();
     else if (item === 'oxygen') cost = OXYGEN_COST;
     else return;
 
@@ -116,8 +187,10 @@ io.on('connection', (socket) => {
 
     gameState.money -= cost;
     if (item === 'weight') gameState.weights++;
-    else gameState.oxygenTanks++;
+    else if (item === 'belt') gameState.belts++;
+    else if (item === 'oxygen') gameState.oxygenTanks++;
     console.log(`[purchase] ${socket.id} bought ${item} for $${cost}`);
+    scheduleSave();
     broadcastState();
   });
 
@@ -152,7 +225,10 @@ io.on('connection', (socket) => {
 
 // passive income tick — every 1s
 setInterval(() => {
-  gameState.money += gameState.passiveIncome;
+  if (gameState.passiveIncome > 0) {
+    gameState.money += gameState.passiveIncome;
+    scheduleSave();
+  }
   broadcastState();
 }, 1000);
 

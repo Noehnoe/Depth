@@ -281,6 +281,7 @@
     maxDepth: 0,
     descentSpeedBase: 28,
     weights: 0,
+    belts: 0,
     oxygenMax: 100,
     oxygen: 100,
     carried: [],
@@ -335,15 +336,43 @@
       refreshPlayerOrder();
     });
     net.sock.on('game_state', (state) => {
-      if (!state || !state.players) return;
-      // store others, drop self
-      const next = {};
-      for (const sid in state.players) {
-        if (sid !== net.myId) next[sid] = state.players[sid];
+      if (!state) return;
+      // sync shared economy (server is authoritative)
+      if (typeof state.money === 'number') game.money = state.money;
+      if (typeof state.weights === 'number') game.weights = state.weights;
+      if (typeof state.belts === 'number') game.belts = state.belts;
+      if (typeof state.oxygenTanks === 'number') {
+        const newMax = 100 + state.oxygenTanks * 80;
+        if (newMax !== game.oxygenMax) {
+          // grew or shrank — clamp oxygen but don't refill (refill happens on respawn/purchase locally)
+          game.oxygenMax = newMax;
+          if (game.oxygen > game.oxygenMax) game.oxygen = game.oxygenMax;
+        }
       }
-      net.remotePlayers = next;
-      refreshPlayerOrder();
+      if (Array.isArray(state.placedOres)) {
+        const arr = state.placedOres.slice(0, 12);
+        while (arr.length < 12) arr.push(null);
+        // server stores type strings; client placed is same
+        game.placed = arr.map(t => (typeof t === 'string') ? t : null);
+      }
+      // remote players
+      if (state.players) {
+        const next = {};
+        for (const sid in state.players) {
+          if (sid !== net.myId) next[sid] = state.players[sid];
+        }
+        net.remotePlayers = next;
+        refreshPlayerOrder();
+      }
     });
+    net.sock.on('purchase_failed', (info) => {
+      console.log('[purchase failed]', info);
+    });
+  }
+
+  function sendPlacedSync() {
+    if (!isOnline()) return;
+    net.sock.emit('set_all_placed', { placed: game.placed });
   }
 
   function sendUpdate() {
@@ -374,8 +403,14 @@
   }
 
   function currentDescentSpeed() {
-    return game.descentSpeedBase * Math.pow(0.95, game.weights);
+    return game.descentSpeedBase * Math.pow(1.10, game.weights);
   }
+  function currentAscentSpeed() {
+    return 15 * Math.pow(1.20, game.belts);
+  }
+  function weightPrice() { return 15 + game.weights * 10; }
+  function beltPrice()   { return 20 + game.belts   * 10; }
+  function isOnline() { return net.connected && net.sock; }
 
   function passiveIncome() {
     let s = 0;
@@ -391,6 +426,7 @@
     for (let i = 0; i < 12 && i < pool.length; i++) game.placed[i] = pool[i];
     const leftover = pool.slice(12);
     game.carried = leftover.slice(0, game.carriedMax);
+    sendPlacedSync();
   }
 
   // ---------- ORE GENERATION ----------
@@ -843,7 +879,7 @@
 
     const descentSpeed = currentDescentSpeed();
     const ascending = input('w') || input('arrowup');
-    let verticalSpeed = ascending ? -descentSpeed * 0.6 : descentSpeed;
+    let verticalSpeed = ascending ? -currentAscentSpeed() : descentSpeed;
     game.depth += verticalSpeed * dt;
     if (game.depth < 0) { game.depth = 0; exitShaftToSurface(); return; }
     if (game.depth > game.maxDepth) game.maxDepth = game.depth;
@@ -1752,9 +1788,11 @@
     pixelText('DEPTH', W / 2, H - 46, 11, C.textDim, 'center');
     pixelText(Math.floor(game.depth) + 'm', W / 2, H - 32, 18, '#fff', 'center');
 
-    // descent speed bottom-left
-    panel(8, H - 40, 130, 26);
-    pixelText(`▼ ${currentDescentSpeed().toFixed(1)} px/s`, 14, H - 34, 11, '#aac8ff');
+    // descent / ascent speed bottom-left
+    panel(8, H - 68, 150, 54);
+    pixelText(`v ${currentDescentSpeed().toFixed(1)} px/s`, 14, H - 62, 11, '#aac8ff');
+    pixelText(`^ ${currentAscentSpeed().toFixed(1)} px/s`, 14, H - 46, 11, '#ffd060');
+    pixelText(`W:${game.weights} B:${game.belts}`, 14, H - 28, 10, C.textDim);
   }
 
   // ---------- BASE INTERIOR ----------
@@ -1868,9 +1906,11 @@
         if (canPlace) {
           const ore = game.carried.shift();
           game.placed[i] = ore;
+          sendPlacedSync();
         } else if (canTake) {
           game.carried.push(game.placed[i]);
           game.placed[i] = null;
+          sendPlacedSync();
         }
       }
     }
@@ -1934,44 +1974,86 @@
     drawCoin(px + pw - 150, py + 66, 12);
     pixelText('$' + Math.floor(game.money), px + pw - 132, py + 64, 14, '#fff');
 
-    // weight item
-    drawShopItem(px + 20, py + 96, pw - 40, 90, {
+    // 3 items, 76px tall each
+    drawShopItem(px + 20, py + 96, pw - 40, 76, {
       icon: drawWeightIcon,
       title: 'IRON WEIGHT',
-      desc: `Slows descent by 5% (multiplicative)`,
+      desc: 'Makes descent 10% faster (each)',
       stat1: `OWNED: ${game.weights}`,
       stat2: `DESCENT: ${currentDescentSpeed().toFixed(1)} px/s`,
-      cost: game.weightPrice,
-      onBuy: () => {
-        if (game.money >= game.weightPrice) {
-          game.money -= game.weightPrice;
-          game.weights++;
-          game.weightPrice += 10;
-        }
-      },
+      cost: weightPrice(),
+      onBuy: () => buyItem('weight', weightPrice(), () => { game.weights++; }),
     });
 
-    // oxygen item
-    drawShopItem(px + 20, py + 200, pw - 40, 90, {
+    drawShopItem(px + 20, py + 180, pw - 40, 76, {
+      icon: drawBeltIcon,
+      title: 'JET BELT',
+      desc: 'Boosts ascent speed by 20% (each)',
+      stat1: `OWNED: ${game.belts}`,
+      stat2: `ASCENT: ${currentAscentSpeed().toFixed(1)} px/s`,
+      cost: beltPrice(),
+      onBuy: () => buyItem('belt', beltPrice(), () => { game.belts++; }),
+    });
+
+    drawShopItem(px + 20, py + 264, pw - 40, 76, {
       icon: drawO2Icon,
       title: 'OXYGEN TANK',
       desc: 'Adds +80 max O₂ and refills tank',
       stat1: `MAX O2: ${game.oxygenMax}`,
       stat2: `CURRENT: ${Math.floor(game.oxygen)}`,
       cost: game.oxygenPrice,
-      onBuy: () => {
-        if (game.money >= game.oxygenPrice) {
-          game.money -= game.oxygenPrice;
-          game.oxygenMax += 80;
-          game.oxygen = game.oxygenMax;
-        }
-      },
+      onBuy: () => buyItem('oxygen', game.oxygenPrice, () => {
+        game.oxygenMax += 80;
+        game.oxygen = game.oxygenMax;
+      }),
     });
 
     if (button(W / 2 - 70, py + ph - 56, 140, 38, 'LEAVE [B]')) {
       game.scene = 'surface';
     }
     if (input('b')) game.scene = 'surface';
+  }
+
+  // Generic buy: server-authoritative when online, local fallback offline.
+  // Server emits game_state which will overwrite local counters anyway, so the local
+  // increment is only used when offline.
+  function buyItem(serverName, cost, applyLocal) {
+    if (isOnline()) {
+      net.sock.emit('purchase', { item: serverName });
+      return;
+    }
+    if (game.money < cost) return;
+    game.money -= cost;
+    applyLocal();
+    // oxygen tank also refills locally
+    if (serverName === 'oxygen') game.oxygen = game.oxygenMax;
+  }
+
+  function drawBeltIcon(cx, cy) {
+    // jet belt: a wide strap with two thrusters and flame
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(cx - 16, cy - 4, 32, 8);
+    ctx.fillStyle = '#5a3a22';
+    ctx.fillRect(cx - 16, cy - 4, 32, 1);
+    // buckle
+    ctx.fillStyle = '#ffe080';
+    ctx.fillRect(cx - 4, cy - 5, 8, 10);
+    ctx.fillStyle = '#aa8020';
+    ctx.fillRect(cx - 4, cy + 3, 8, 2);
+    // thrusters
+    ctx.fillStyle = '#888';
+    ctx.fillRect(cx - 14, cy + 4, 6, 4);
+    ctx.fillRect(cx + 8, cy + 4, 6, 4);
+    ctx.fillStyle = '#444';
+    ctx.fillRect(cx - 14, cy + 7, 6, 1);
+    ctx.fillRect(cx + 8, cy + 7, 6, 1);
+    // flames
+    ctx.fillStyle = '#ff8030';
+    ctx.fillRect(cx - 13, cy + 8, 4, 4);
+    ctx.fillRect(cx + 9, cy + 8, 4, 4);
+    ctx.fillStyle = '#ffe060';
+    ctx.fillRect(cx - 12, cy + 8, 2, 2);
+    ctx.fillRect(cx + 10, cy + 8, 2, 2);
   }
 
   function drawShopItem(x, y, w, h, item) {
