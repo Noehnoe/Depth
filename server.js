@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -12,7 +13,117 @@ const io = new Server(server, {
   pingInterval: 3000,
 });
 
+app.use(express.json({ limit: '8kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------- USERS / AUTH ----------
+const USERS_PATH = process.env.USERS_PATH || path.join(__dirname, 'users.json');
+const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
+let users = {}; // username(lower) -> { username, salt, hash, sessions: [{token, expiresAt}] }
+
+try {
+  users = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));
+  console.log(`[users] loaded ${Object.keys(users).length} accounts from ${USERS_PATH}`);
+} catch (e) {
+  console.log(`[users] no user file at ${USERS_PATH} — starting empty`);
+}
+
+let usersSaveTimer = null;
+function saveUsers() {
+  if (usersSaveTimer) return;
+  usersSaveTimer = setTimeout(() => {
+    usersSaveTimer = null;
+    fs.writeFile(USERS_PATH, JSON.stringify(users, null, 2), (err) => {
+      if (err) console.error('[users] save error:', err.message);
+    });
+  }, 500);
+}
+
+function hashPassword(pw, salt) {
+  return crypto.pbkdf2Sync(pw, salt, 100000, 32, 'sha256').toString('hex');
+}
+function makeToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+function findUserByToken(token) {
+  if (!token) return null;
+  for (const key in users) {
+    const u = users[key];
+    if (!u.sessions) continue;
+    const s = u.sessions.find(s => s.token === token && s.expiresAt > Date.now());
+    if (s) return u;
+  }
+  return null;
+}
+
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body || {};
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'username and password required' });
+  }
+  const trimmed = username.trim();
+  if (trimmed.length < 3 || trimmed.length > 20) {
+    return res.status(400).json({ error: 'username must be 3-20 characters' });
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+    return res.status(400).json({ error: 'username can only contain letters, numbers, _ and -' });
+  }
+  if (password.length < 4 || password.length > 64) {
+    return res.status(400).json({ error: 'password must be 4-64 characters' });
+  }
+  const key = trimmed.toLowerCase();
+  if (users[key]) return res.status(409).json({ error: 'username already taken' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = hashPassword(password, salt);
+  const token = makeToken();
+  users[key] = {
+    username: trimmed,
+    salt,
+    hash,
+    sessions: [{ token, expiresAt: Date.now() + SESSION_TTL_MS }],
+    createdAt: Date.now(),
+  };
+  saveUsers();
+  console.log(`[register] ${trimmed}`);
+  res.json({ token, username: trimmed });
+});
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'username and password required' });
+  }
+  const key = username.trim().toLowerCase();
+  const u = users[key];
+  if (!u) return res.status(401).json({ error: 'invalid username or password' });
+  const hash = hashPassword(password, u.salt);
+  if (hash !== u.hash) return res.status(401).json({ error: 'invalid username or password' });
+  const token = makeToken();
+  u.sessions = (u.sessions || []).filter(s => s.expiresAt > Date.now());
+  u.sessions.push({ token, expiresAt: Date.now() + SESSION_TTL_MS });
+  saveUsers();
+  console.log(`[login] ${u.username}`);
+  res.json({ token, username: u.username });
+});
+
+app.post('/api/me', (req, res) => {
+  const { token } = req.body || {};
+  const u = findUserByToken(token);
+  if (!u) return res.status(401).json({ error: 'invalid token' });
+  res.json({ username: u.username });
+});
+
+app.post('/api/logout', (req, res) => {
+  const { token } = req.body || {};
+  if (token) {
+    for (const key in users) {
+      const u = users[key];
+      if (u.sessions) u.sessions = u.sessions.filter(s => s.token !== token);
+    }
+    saveUsers();
+  }
+  res.json({ ok: true });
+});
 
 const SPAWN = { x: 150, y: 300, depth: 0 };
 const BASE_OXYGEN = 100;
@@ -108,7 +219,7 @@ function beltCost() {
 }
 
 io.on('connection', (socket) => {
-  socket.on('player_join', () => {
+  socket.on('player_join', (data = {}) => {
     // sweep ghosts: any player whose socket isn't actually connected anymore
     const activeSids = new Set(Array.from(io.sockets.sockets.keys()));
     for (const sid in gameState.players) {
@@ -117,6 +228,16 @@ io.on('connection', (socket) => {
         delete gameState.players[sid];
       }
     }
+    // verify auth token if provided; trust the username on the user record
+    let name = null;
+    if (data.token) {
+      const u = findUserByToken(data.token);
+      if (u) name = u.username;
+    }
+    if (!name && typeof data.username === 'string') {
+      // fallback for offline/anonymous play
+      name = data.username.slice(0, 20).replace(/[^a-zA-Z0-9_-]/g, '') || null;
+    }
     gameState.players[socket.id] = {
       x: SPAWN.x,
       y: SPAWN.y,
@@ -124,6 +245,7 @@ io.on('connection', (socket) => {
       carrying: [],
       oxygen: BASE_OXYGEN + OXYGEN_PER_TANK * gameState.oxygenTanks,
       alive: true,
+      name: name || 'anon',
     };
     console.log(`[join] player ${socket.id} (${Object.keys(gameState.players).length} online)`);
     broadcastState();

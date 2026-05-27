@@ -25,9 +25,111 @@
     cursor: crosshair;
     display: block;
   }
+  #loginOverlay {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, #1a0830 0%, #06030c 70%, #000 100%);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    font-family: "Courier New", monospace;
+  }
+  #loginOverlay.show { display: flex; }
+  #loginCard {
+    width: min(380px, 90vw);
+    background: #120820;
+    border: 3px solid #5a3aa0;
+    box-shadow: 0 0 40px #5a3aa0, 0 0 4px #a880ff inset;
+    padding: 24px 22px 22px;
+    color: #fff;
+  }
+  #loginCard h1 {
+    margin: 0 0 4px;
+    font-size: 38px;
+    text-align: center;
+    color: #ffe080;
+    letter-spacing: 4px;
+    text-shadow: 2px 2px 0 #1a0820;
+  }
+  #loginCard .sub {
+    text-align: center;
+    color: #aaa8c8;
+    font-size: 12px;
+    margin-bottom: 18px;
+  }
+  #tabs { display: flex; gap: 0; margin-bottom: 14px; }
+  #tabs button {
+    flex: 1;
+    background: #1a0e2a;
+    color: #aaa8c8;
+    border: 2px solid #3a1c5a;
+    padding: 9px 0;
+    font: bold 13px "Courier New", monospace;
+    cursor: pointer;
+  }
+  #tabs button.active {
+    background: #3a1c5a;
+    color: #ffe080;
+    border-color: #a880ff;
+  }
+  #loginCard label {
+    display: block;
+    font-size: 11px;
+    color: #aaa8c8;
+    margin: 10px 0 4px;
+    letter-spacing: 1px;
+  }
+  #loginCard input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #06030c;
+    color: #fff;
+    border: 2px solid #3a1c5a;
+    padding: 10px;
+    font: 14px "Courier New", monospace;
+    outline: none;
+  }
+  #loginCard input:focus { border-color: #a880ff; }
+  #loginCard button.action {
+    width: 100%;
+    margin-top: 14px;
+    background: #3a1c5a;
+    color: #ffe080;
+    border: 2px solid #a880ff;
+    padding: 12px;
+    font: bold 14px "Courier New", monospace;
+    cursor: pointer;
+    letter-spacing: 2px;
+  }
+  #loginCard button.action:hover { background: #5a3aa0; }
+  #loginCard button.action:disabled { background: #1a1430; color: #555; border-color: #2a2438; cursor: not-allowed; }
+  #loginErr {
+    color: #ff6060;
+    font-size: 12px;
+    text-align: center;
+    margin-top: 10px;
+    min-height: 14px;
+  }
 </style>
 </head>
 <body>
+<div id="loginOverlay">
+  <div id="loginCard">
+    <h1>DEPTH</h1>
+    <div class="sub">enter the mines</div>
+    <div id="tabs">
+      <button id="tabLogin" class="active">LOGIN</button>
+      <button id="tabRegister">REGISTER</button>
+    </div>
+    <label for="userInput">USERNAME</label>
+    <input id="userInput" type="text" autocomplete="username" maxlength="20" />
+    <label for="passInput">PASSWORD</label>
+    <input id="passInput" type="password" autocomplete="current-password" maxlength="64" />
+    <button class="action" id="submitBtn">LOGIN</button>
+    <div id="loginErr"></div>
+  </div>
+</div>
 <canvas id="game" width="800" height="600"></canvas>
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -232,6 +334,106 @@
 
   function input(name) { return keys[name]; }
 
+  // ---------- AUTH ----------
+  const auth = { token: null, username: null };
+
+  const loginOverlay = document.getElementById('loginOverlay');
+  const tabLogin = document.getElementById('tabLogin');
+  const tabRegister = document.getElementById('tabRegister');
+  const userInput = document.getElementById('userInput');
+  const passInput = document.getElementById('passInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const loginErr = document.getElementById('loginErr');
+  let authMode = 'login'; // or 'register'
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    tabLogin.classList.toggle('active', mode === 'login');
+    tabRegister.classList.toggle('active', mode === 'register');
+    submitBtn.textContent = mode === 'login' ? 'LOGIN' : 'REGISTER';
+    passInput.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+    loginErr.textContent = '';
+  }
+  tabLogin.addEventListener('click', () => setAuthMode('login'));
+  tabRegister.addEventListener('click', () => setAuthMode('register'));
+
+  function showLogin() {
+    loginOverlay.classList.add('show');
+    setTimeout(() => userInput.focus(), 30);
+  }
+  function hideLogin() {
+    loginOverlay.classList.remove('show');
+  }
+
+  async function postJson(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    let data = {};
+    try { data = await r.json(); } catch (e) {}
+    return { ok: r.ok, status: r.status, data };
+  }
+
+  async function submitAuth() {
+    loginErr.textContent = '';
+    const username = userInput.value.trim();
+    const password = passInput.value;
+    if (!username || !password) {
+      loginErr.textContent = 'fill in both fields';
+      return;
+    }
+    submitBtn.disabled = true;
+    const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
+    const { ok, data } = await postJson(endpoint, { username, password });
+    submitBtn.disabled = false;
+    if (!ok) {
+      loginErr.textContent = data.error || 'something went wrong';
+      return;
+    }
+    auth.token = data.token;
+    auth.username = data.username;
+    try { localStorage.setItem('depthAuth', JSON.stringify(auth)); } catch (e) {}
+    hideLogin();
+    game.scene = 'menu';
+    // connect to multiplayer once authenticated
+    if (!net.sock) initNetwork();
+  }
+  submitBtn.addEventListener('click', submitAuth);
+  [userInput, passInput].forEach(el => {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitAuth();
+    });
+  });
+
+  async function tryRestoreSession() {
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem('depthAuth') || 'null'); } catch (e) {}
+    if (!stored || !stored.token) { showLogin(); return; }
+    const { ok, data } = await postJson('/api/me', { token: stored.token });
+    if (ok && data.username) {
+      auth.token = stored.token;
+      auth.username = data.username;
+      game.scene = 'menu';
+      if (!net.sock) initNetwork();
+    } else {
+      try { localStorage.removeItem('depthAuth'); } catch (e) {}
+      showLogin();
+    }
+  }
+
+  async function logout() {
+    const token = auth.token;
+    try { localStorage.removeItem('depthAuth'); } catch (e) {}
+    auth.token = null;
+    auth.username = null;
+    if (token) {
+      try { await postJson('/api/logout', { token }); } catch (e) {}
+    }
+    location.reload();
+  }
+
   // ---------- GAME STATE ----------
   const SURFACE_GROUND_Y = 460;
   const WORLD_WIDTH_BASE = 1000;
@@ -262,7 +464,7 @@
   };
 
   const game = {
-    scene: 'title',
+    scene: 'boot',
     money: 40,
     player: {
       x: 240, y: SURFACE_GROUND_Y - 32,
@@ -327,7 +529,7 @@
     net.sock.on('connect', () => {
       net.myId = net.sock.id;
       net.connected = true;
-      net.sock.emit('player_join');
+      net.sock.emit('player_join', { token: auth.token, username: auth.username });
       refreshPlayerOrder();
     });
     net.sock.on('disconnect', () => {
@@ -1054,9 +1256,9 @@
       const rp = net.remotePlayers[sid];
       const hx = remoteHouseX(i);
       const pal = paletteFor(sid);
+      const label = (rp && rp.name) ? rp.name.toUpperCase().slice(0, 6) : ('P' + (i + 2));
       drawRemoteHouse(hx - camX, SURFACE_GROUND_Y - BASE_H, pal);
-      drawSign(hx - camX + BASE_W / 2 - 16, SURFACE_GROUND_Y - BASE_H - 18, 'P' + (i + 2));
-      // draw remote miner if they're on the surface
+      drawSign(hx - camX + BASE_W / 2 - 16, SURFACE_GROUND_Y - BASE_H - 18, label);
       if (rp && (rp.depth === 0 || rp.depth === undefined) && rp.alive !== false) {
         drawMiner(rp.x - camX, (rp.y !== undefined ? rp.y : SURFACE_GROUND_Y - 32), {
           walkPhase: 0,
@@ -1065,8 +1267,7 @@
           carryCount: (rp.carrying || []).length,
           tint: pal,
         });
-        // nameplate
-        pixelText('P' + (i + 2), rp.x - camX + 8, (rp.y || SURFACE_GROUND_Y - 32) - 14, 10, pal.helmet, 'center');
+        pixelText(label, rp.x - camX + 8, (rp.y || SURFACE_GROUND_Y - 32) - 14, 10, pal.helmet, 'center');
       }
     }
 
@@ -1504,7 +1705,8 @@
         mode: 'shaft',
         tint: pal,
       });
-      pixelText('P' + (i + 2), rp.x + 8, screenY - 14, 10, pal.helmet, 'center');
+      const labelS = (rp.name) ? rp.name.toUpperCase().slice(0, 6) : ('P' + (i + 2));
+      pixelText(labelS, rp.x + 8, screenY - 14, 10, pal.helmet, 'center');
     }
 
     // player
@@ -2123,6 +2325,88 @@
   }
 
   // ---------- TITLE SCREEN ----------
+  // ---------- BOOT (waiting for auth check) ----------
+  function drawBoot() {
+    ctx.fillStyle = '#06030c';
+    ctx.fillRect(0, 0, W, H);
+    pixelText('DEPTH', W / 2, H / 2 - 40, 48, '#ffe080', 'center');
+    const dots = '.'.repeat(1 + (Math.floor(game.timeAcc * 3) % 3));
+    pixelText('loading' + dots, W / 2, H / 2 + 20, 14, '#aaa8c8', 'center');
+  }
+
+  // ---------- MAIN MENU (after login) ----------
+  function drawMenu() {
+    // background — reuse the title aesthetic
+    ctx.fillStyle = '#0a0820';
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 5; i++) {
+      const c = ['#0a0820', '#15123a', '#26204a', '#3a2c5a', '#5a3a6a'][i];
+      ctx.fillStyle = c;
+      ctx.fillRect(0, i * 60, W, 60);
+    }
+    // moon
+    ctx.fillStyle = C.moon;
+    ctx.fillRect(120, 60, 50, 50);
+    ctx.fillStyle = C.moonShade;
+    ctx.fillRect(130, 70, 10, 6);
+    ctx.fillRect(146, 90, 12, 6);
+    for (let i = 0; i < 80; i++) {
+      const sx = (i * 137) % W;
+      const sy = (i * 53) % 280;
+      const twinkle = ((Math.floor(game.timeAcc * 3) + i) % 5 === 0);
+      ctx.fillStyle = twinkle ? '#fff' : '#5a5078';
+      ctx.fillRect(sx, sy, twinkle ? 2 : 1, twinkle ? 2 : 1);
+    }
+    drawMountains(0, 320, C.mtnFar, 0);
+    drawMountains(0, 360, C.mtnMid, 0);
+    drawMountains(0, 400, C.mtnNear, 0);
+    ctx.fillStyle = C.dirtMid;
+    ctx.fillRect(0, 440, W, H - 440);
+    ctx.fillStyle = C.grassTop;
+    ctx.fillRect(0, 440, W, 6);
+
+    // title
+    pixelText('DEPTH', W / 2 + 4, 84, 80, '#1a0820', 'center');
+    pixelText('DEPTH', W / 2, 80, 80, '#ffe080', 'center');
+    ctx.fillStyle = '#a880ff';
+    ctx.fillRect(W / 2 - 120, 168, 240, 3);
+    ctx.fillStyle = '#5a3aa0';
+    ctx.fillRect(W / 2 - 120, 171, 240, 2);
+
+    // welcome
+    pixelText('welcome,', W / 2, 196, 12, C.textDim, 'center');
+    pixelText(auth.username || 'miner', W / 2, 214, 20, '#fff', 'center');
+
+    // buttons
+    if (button(W / 2 - 130, 290, 260, 56, 'START GAME')) {
+      game.scene = 'title';
+    }
+    if (button(W / 2 - 130, 360, 260, 44, 'LOGOUT')) {
+      logout();
+    }
+
+    // online count
+    if (net.connected) {
+      const count = 1 + Object.keys(net.remotePlayers).length;
+      pixelText(`. ${count} ONLINE`, W / 2, 430, 12, '#7fdc7f', 'center');
+    } else {
+      pixelText('connecting...', W / 2, 430, 12, C.textDim, 'center');
+    }
+
+    // miner walking
+    const mx = ((game.timeAcc * 40) % (W + 60)) - 30;
+    drawMiner(mx, 408, {
+      walkPhase: game.timeAcc * 8,
+      facing: 1,
+      mode: 'surface',
+    });
+
+    pixelText('press [SPACE] to start  ·  [L] to logout', W / 2, H - 30, 11, C.textDim, 'center');
+
+    if (input(' ') && game.timeAcc > 0.5) game.scene = 'title';
+    if (justPressed['l']) logout();
+  }
+
   function drawTitle() {
     // animated bg
     ctx.fillStyle = '#0a0820';
@@ -2246,7 +2530,9 @@
       ctx.translate((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
     }
     ctx.clearRect(0, 0, W, H);
-    if (game.scene === 'title') drawTitle();
+    if (game.scene === 'boot') drawBoot();
+    else if (game.scene === 'menu') drawMenu();
+    else if (game.scene === 'title') drawTitle();
     else if (game.scene === 'surface') drawSurface();
     else if (game.scene === 'shaft') drawShaft();
     else if (game.scene === 'base') drawBaseScreen();
@@ -2293,7 +2579,9 @@
     drawBtn(W - 170, H - 90, 70, 70, 'GRAB', ' ', true);
   }
 
-  initNetwork();
+  // gate: check existing session before booting; tryRestoreSession will move scene
+  // to 'menu' (and call initNetwork) on success, or show the login overlay on failure
+  tryRestoreSession();
 
   setInterval(() => {
     update();
