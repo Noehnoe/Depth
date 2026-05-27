@@ -147,6 +147,9 @@ const BELT_BASE_COST = 100;
 const BELT_INCREMENT = 50;
 const BACKPACK_BASE_COST = 150;
 const BACKPACK_INCREMENT = 100;
+const TROVE_BASE_COST = 500;
+const TROVE_INCREMENT = 500;
+const TROVE_SLOTS_PER_UPGRADE = 6;
 const OXYGEN_COST = 125;
 const SELL_MULT = 5;
 const MAX_ACTIVE_ORES = 30;
@@ -194,9 +197,14 @@ function defaultGameData() {
     belts: 0,
     backpacks: 0,
     oxygenTanks: 0,
+    troveExpansions: 0,
     placedOres: new Array(PLACED_SLOTS).fill(null),
     passiveIncome: 0,
   };
+}
+
+function maxTroveSlots(d) {
+  return PLACED_SLOTS + (d.troveExpansions || 0) * TROVE_SLOTS_PER_UPGRADE;
 }
 
 function ensureGameData(u) {
@@ -209,10 +217,11 @@ function ensureGameData(u) {
     if (typeof d.belts !== 'number') d.belts = 0;
     if (typeof d.backpacks !== 'number') d.backpacks = 0;
     if (typeof d.oxygenTanks !== 'number') d.oxygenTanks = 0;
-    if (!Array.isArray(d.placedOres)) d.placedOres = new Array(PLACED_SLOTS).fill(null);
-    while (d.placedOres.length < PLACED_SLOTS) d.placedOres.push(null);
-    if (d.placedOres.length > PLACED_SLOTS) d.placedOres = d.placedOres.slice(0, PLACED_SLOTS);
-    // sanitize placed ore types
+    if (typeof d.troveExpansions !== 'number') d.troveExpansions = 0;
+    const cap = maxTroveSlots(d);
+    if (!Array.isArray(d.placedOres)) d.placedOres = new Array(cap).fill(null);
+    while (d.placedOres.length < cap) d.placedOres.push(null);
+    if (d.placedOres.length > cap) d.placedOres = d.placedOres.slice(0, cap);
     d.placedOres = d.placedOres.map(t =>
       (typeof t === 'string' && ORE_VALUES[t] !== undefined) ? t : null);
     recalcPassiveIncome(d);
@@ -237,9 +246,10 @@ function recalcPassiveIncome(d) {
     (s, t) => s + (t ? (ORE_VALUES[t] || 0) : 0), 0);
 }
 
-function weightCost(d)   { return WEIGHT_BASE_COST   + d.weights   * WEIGHT_INCREMENT; }
-function beltCost(d)     { return BELT_BASE_COST     + d.belts     * BELT_INCREMENT; }
-function backpackCost(d) { return BACKPACK_BASE_COST + d.backpacks * BACKPACK_INCREMENT; }
+function weightCost(d)   { return WEIGHT_BASE_COST   + d.weights         * WEIGHT_INCREMENT; }
+function beltCost(d)     { return BELT_BASE_COST     + d.belts           * BELT_INCREMENT; }
+function backpackCost(d) { return BACKPACK_BASE_COST + d.backpacks       * BACKPACK_INCREMENT; }
+function troveCost(d)    { return TROVE_BASE_COST    + d.troveExpansions * TROVE_INCREMENT; }
 
 // Send each connected socket their own per-user economy + the shared players list.
 function broadcastState() {
@@ -341,8 +351,9 @@ io.on('connection', (socket) => {
   socket.on('set_all_placed', ({ placed } = {}) => {
     const d = gameDataFor(socket);
     if (!Array.isArray(placed)) return;
-    const safe = new Array(PLACED_SLOTS).fill(null);
-    for (let i = 0; i < Math.min(PLACED_SLOTS, placed.length); i++) {
+    const cap = maxTroveSlots(d);
+    const safe = new Array(cap).fill(null);
+    for (let i = 0; i < Math.min(cap, placed.length); i++) {
       const t = placed[i];
       if (typeof t === 'string' && ORE_VALUES[t] !== undefined) safe[i] = t;
     }
@@ -358,6 +369,7 @@ io.on('connection', (socket) => {
     if (item === 'weight') cost = weightCost(d);
     else if (item === 'belt') cost = beltCost(d);
     else if (item === 'backpack') cost = backpackCost(d);
+    else if (item === 'trove') cost = troveCost(d);
     else if (item === 'oxygen') cost = OXYGEN_COST;
     else return;
 
@@ -370,6 +382,11 @@ io.on('connection', (socket) => {
     if (item === 'weight') d.weights++;
     else if (item === 'belt') d.belts++;
     else if (item === 'backpack') d.backpacks++;
+    else if (item === 'trove') {
+      d.troveExpansions++;
+      // grow the placed array immediately so the new slots are visible
+      for (let i = 0; i < TROVE_SLOTS_PER_UPGRADE; i++) d.placedOres.push(null);
+    }
     else if (item === 'oxygen') d.oxygenTanks++;
     console.log(`[purchase] ${socket.data && socket.data.username || socket.id} bought ${item} for $${cost}`);
     scheduleSave();

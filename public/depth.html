@@ -408,6 +408,7 @@
     game.weights = 0;
     game.belts = 0;
     game.backpacks = 0;
+    game.troveExpansions = 0;
     game.carriedMax = 12;
     game.oxygenMax = 100;
     game.oxygen = 100;
@@ -527,6 +528,7 @@
     weights: 0,
     belts: 0,
     backpacks: 0,
+    troveExpansions: 0,
     oxygenMax: 100,
     oxygen: 100,
     carried: [],
@@ -590,6 +592,7 @@
         game.backpacks = state.backpacks;
         game.carriedMax = carriedMaxFrom(state.backpacks);
       }
+      if (typeof state.troveExpansions === 'number') game.troveExpansions = state.troveExpansions;
       if (typeof state.oxygenTanks === 'number') {
         const newMax = 100 + state.oxygenTanks * 80;
         if (newMax !== game.oxygenMax) {
@@ -599,9 +602,9 @@
         }
       }
       if (Array.isArray(state.placedOres)) {
-        const arr = state.placedOres.slice(0, 12);
-        while (arr.length < 12) arr.push(null);
-        // server stores type strings; client placed is same
+        const cap = placedSlotCount();
+        const arr = state.placedOres.slice(0, cap);
+        while (arr.length < cap) arr.push(null);
         game.placed = arr.map(t => (typeof t === 'string') ? t : null);
       }
       // remote players
@@ -657,9 +660,11 @@
   function currentAscentSpeed() {
     return 15 * Math.pow(1.20, game.belts);
   }
-  function weightPrice()   { return 75  + game.weights   * 50; }
-  function beltPrice()     { return 100 + game.belts     * 50; }
-  function backpackPrice() { return 150 + game.backpacks * 100; }
+  function weightPrice()   { return 75  + game.weights         * 50; }
+  function beltPrice()     { return 100 + game.belts           * 50; }
+  function backpackPrice() { return 150 + game.backpacks       * 100; }
+  function trovePrice()    { return 500 + game.troveExpansions * 500; }
+  function placedSlotCount() { return 12 + game.troveExpansions * 6; }
   function carriedMaxFrom(backpacks) { return 12 + backpacks * 6; }
   const SELL_MULT = 5;
   function isOnline() { return net.connected && net.sock; }
@@ -671,12 +676,13 @@
   }
 
   function placeBestOres() {
+    const cap = placedSlotCount();
     const pool = [...game.carried];
     for (const o of game.placed) if (o) pool.push(o);
     pool.sort((a, b) => ORE_TYPES[b].value - ORE_TYPES[a].value);
-    game.placed = new Array(12).fill(null);
-    for (let i = 0; i < 12 && i < pool.length; i++) game.placed[i] = pool[i];
-    const leftover = pool.slice(12);
+    game.placed = new Array(cap).fill(null);
+    for (let i = 0; i < cap && i < pool.length; i++) game.placed[i] = pool[i];
+    const leftover = pool.slice(cap);
     game.carried = leftover.slice(0, game.carriedMax);
     sendPlacedSync();
   }
@@ -2100,10 +2106,17 @@
     pixelText('click empty slot to place, click ore to take it back', W / 2, 42, 12, C.textDim, 'center');
     pixelText('total income: +$' + passiveIncome() + '/s', W / 2, 60, 14, C.textHi, 'center');
 
-    // 12 display slots — 2 rows of 6, themed as a wooden display case
-    const cols = 6, rows = 2;
-    const slotSize = 80;
+    // dynamic-size grid based on how many trove expansions are owned
+    const slotCount = placedSlotCount();
+    if (game.placed.length < slotCount) {
+      const extra = slotCount - game.placed.length;
+      for (let i = 0; i < extra; i++) game.placed.push(null);
+    }
+    const cols = 6;
+    const rows = Math.ceil(slotCount / cols);
     const gap = 8;
+    const maxGridH = 240; // shelf area is bounded so buttons below still fit
+    const slotSize = Math.min(80, Math.floor((maxGridH - (rows - 1) * gap) / rows));
     const gridW = cols * (slotSize + gap) - gap;
     const gridX = (W - gridW) / 2;
     const gridY = 100;
@@ -2114,7 +2127,7 @@
     ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, 4);
     ctx.fillRect(gridX - 12, gridY + rows * (slotSize + gap) - gap + 6, gridW + 24, 4);
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < slotCount; i++) {
       const cx = i % cols;
       const cy = (i / cols) | 0;
       const sx = gridX + cx * (slotSize + gap);
@@ -2137,33 +2150,39 @@
       ctx.fillRect(sx + 2, sy + 2, 1, slotSize - 4);
 
       const o = game.placed[i];
+      const sc = slotSize / 80;
+      const showLabels = slotSize >= 56;
       if (o) {
         const ot = ORE_TYPES[o];
-        // pedestal
+        // pedestal (proportional)
+        const pedW = Math.round(44 * sc), pedH = Math.round(8 * sc);
         ctx.fillStyle = '#3a2210';
-        ctx.fillRect(sx + 18, sy + slotSize - 24, 44, 8);
-        ctx.fillStyle = '#1a0e08';
-        ctx.fillRect(sx + 18, sy + slotSize - 16, 44, 2);
+        ctx.fillRect(sx + (slotSize - pedW) / 2, sy + slotSize - Math.round(24 * sc), pedW, pedH);
         // glow halo
         if (ot.glow) {
           const pulse = 0.6 + 0.3 * Math.sin(game.timeAcc * 3 + i);
           ctx.globalAlpha = 0.4 * pulse;
           ctx.fillStyle = ot.glow;
-          ctx.fillRect(sx + 10, sy + 16, 60, 30);
+          ctx.fillRect(sx + Math.round(10 * sc), sy + Math.round(16 * sc),
+                       Math.round(60 * sc), Math.round(30 * sc));
           ctx.globalAlpha = 1;
         }
-        // big ore gem
+        // ore gem (scaled)
+        const gemW = Math.max(10, Math.round(24 * sc));
+        const gemH = Math.max(8,  Math.round(18 * sc));
+        const gemX = sx + Math.round((slotSize - gemW) / 2);
+        const gemY = sy + Math.round(slotSize * 0.27);
         ctx.fillStyle = ot.color;
-        ctx.fillRect(sx + 28, sy + 22, 24, 18);
+        ctx.fillRect(gemX, gemY, gemW, gemH);
         ctx.fillStyle = ot.edge;
-        ctx.fillRect(sx + 28, sy + 36, 24, 4);
-        ctx.fillRect(sx + 48, sy + 22, 4, 18);
+        ctx.fillRect(gemX, gemY + gemH - Math.max(2, Math.round(4 * sc)), gemW, Math.max(2, Math.round(4 * sc)));
+        ctx.fillRect(gemX + gemW - Math.max(2, Math.round(4 * sc)), gemY, Math.max(2, Math.round(4 * sc)), gemH);
         ctx.fillStyle = ot.spec;
-        ctx.fillRect(sx + 30, sy + 24, 6, 3);
-        ctx.fillRect(sx + 30, sy + 24, 3, 6);
-        // labels
-        pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
-        pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+        ctx.fillRect(gemX + 2, gemY + 2, Math.max(3, Math.round(6 * sc)), Math.max(2, Math.round(3 * sc)));
+        if (showLabels) {
+          pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
+          pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+        }
         if (hovered && canTake) {
           pixelText('take', sx + slotSize / 2, sy + 4, 9, '#ffe080', 'center');
         }
@@ -2187,11 +2206,21 @@
     }
 
     // Action buttons row above the tray
-    if (button(W / 2 - 200, H - 130, 130, 26, 'PLACE BEST')) placeBestOres();
+    if (button(W / 2 - 280, H - 130, 130, 26, 'PLACE BEST')) placeBestOres();
     const sellAllValue = game.carried.reduce((s, t) => s + ORE_TYPES[t].value * SELL_MULT, 0);
-    if (button(W / 2 - 60, H - 130, 120, 26, `SELL ALL $${sellAllValue}`, game.carried.length > 0)) {
+    if (button(W / 2 - 140, H - 130, 130, 26, `SELL ALL $${sellAllValue}`, game.carried.length > 0)) {
       sellAllCarried();
     }
+    const tCost = trovePrice();
+    const tLabel = `+6 SLOTS $${tCost}`;
+    if (button(W / 2 + 0, H - 130, 170, 26, tLabel, game.money >= tCost)) {
+      buyItem('trove', tCost, () => {
+        game.troveExpansions++;
+        for (let i = 0; i < 6; i++) game.placed.push(null);
+      });
+    }
+    // current slot count display
+    pixelText(`SLOTS: ${placedSlotCount()}`, W / 2 + 180, H - 124, 11, C.textDim);
 
     // carried ores tray — adapts width/slot-size to backpack-expanded capacity
     const trayW = Math.max(400, 24 + game.carriedMax * 26);
