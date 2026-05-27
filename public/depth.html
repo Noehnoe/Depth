@@ -259,14 +259,40 @@
     keys[e.key.toLowerCase()] = false;
   });
 
-  const mouse = { x: 0, y: 0, down: false, clicked: false };
+  const mouse = {
+    x: 0, y: 0,
+    down: false,
+    clicked: false,        // mousedown edge (used by buttons)
+    released: false,       // mouseup edge (used by drag drop)
+    releasedAsDrag: false, // true if mouseup followed a drag (moved > threshold)
+    downX: 0, downY: 0,
+    dragDistance: 0,
+    wheelDelta: 0,
+  };
   canvas.addEventListener('mousemove', e => {
     const r = canvas.getBoundingClientRect();
     mouse.x = (e.clientX - r.left) * (W / r.width);
     mouse.y = (e.clientY - r.top) * (H / r.height);
+    if (mouse.down) {
+      const dx = mouse.x - mouse.downX;
+      const dy = mouse.y - mouse.downY;
+      mouse.dragDistance = Math.sqrt(dx * dx + dy * dy);
+    }
   });
-  canvas.addEventListener('mousedown', e => { mouse.down = true; mouse.clicked = true; });
-  canvas.addEventListener('mouseup', e => { mouse.down = false; });
+  canvas.addEventListener('mousedown', e => {
+    mouse.down = true; mouse.clicked = true;
+    mouse.downX = mouse.x; mouse.downY = mouse.y;
+    mouse.dragDistance = 0;
+  });
+  canvas.addEventListener('mouseup', e => {
+    mouse.down = false;
+    mouse.released = true;
+    mouse.releasedAsDrag = mouse.dragDistance > 5;
+  });
+  canvas.addEventListener('wheel', e => {
+    mouse.wheelDelta += e.deltaY;
+    if (game.scene === 'base') e.preventDefault();
+  }, { passive: false });
 
   // ---------- TOUCH ----------
   const touch = { mode: false, active: {} };
@@ -304,6 +330,8 @@
       } else {
         mouse.x = pos.x; mouse.y = pos.y;
         mouse.down = true; mouse.clicked = true;
+        mouse.downX = pos.x; mouse.downY = pos.y;
+        mouse.dragDistance = 0;
       }
     }
   }, { passive: false });
@@ -314,14 +342,26 @@
       const a = touch.active[t.identifier];
       if (!a) continue;
       a.x = pos.x; a.y = pos.y;
-      if (!a.button) { mouse.x = pos.x; mouse.y = pos.y; }
+      if (!a.button) {
+        mouse.x = pos.x; mouse.y = pos.y;
+        if (mouse.down) {
+          const dx = pos.x - mouse.downX;
+          const dy = pos.y - mouse.downY;
+          mouse.dragDistance = Math.sqrt(dx * dx + dy * dy);
+        }
+      }
     }
   }, { passive: false });
   function releaseTouch(id) {
     const a = touch.active[id];
     if (!a) return;
-    if (a.button) keys[TOUCH_BTN_KEY[a.button]] = false;
-    else mouse.down = false;
+    if (a.button) {
+      keys[TOUCH_BTN_KEY[a.button]] = false;
+    } else {
+      mouse.down = false;
+      mouse.released = true;
+      mouse.releasedAsDrag = mouse.dragDistance > 5;
+    }
     delete touch.active[id];
   }
   canvas.addEventListener('touchend', e => {
@@ -546,6 +586,8 @@
     wallPushTimer: { left: 0, right: 0 },
     timeAcc: 0,
     titleFlash: 0,
+    troveScrollY: 0,
+    drag: null, // { source: 'carried'|'placed', idx, type }
   };
 
   // ---------- MULTIPLAYER ----------
@@ -2106,41 +2148,70 @@
     pixelText('click empty slot to place, click ore to take it back', W / 2, 42, 12, C.textDim, 'center');
     pixelText('total income: +$' + passiveIncome() + '/s', W / 2, 60, 14, C.textHi, 'center');
 
-    // dynamic-size grid based on how many trove expansions are owned
+    // SCROLLABLE FIXED-SIZE GRID
     const slotCount = placedSlotCount();
     if (game.placed.length < slotCount) {
       const extra = slotCount - game.placed.length;
       for (let i = 0; i < extra; i++) game.placed.push(null);
     }
     const cols = 6;
-    const rows = Math.ceil(slotCount / cols);
+    const totalRows = Math.ceil(slotCount / cols);
     const gap = 8;
-    const maxGridH = 240; // shelf area is bounded so buttons below still fit
-    const slotSize = Math.min(80, Math.floor((maxGridH - (rows - 1) * gap) / rows));
+    const slotSize = 80;
+    const visibleRows = 2;
+    const viewportH = visibleRows * (slotSize + gap) - gap;
+    const contentH = totalRows * (slotSize + gap) - gap;
     const gridW = cols * (slotSize + gap) - gap;
     const gridX = (W - gridW) / 2;
     const gridY = 100;
-    // shelf backing
+    const maxScroll = Math.max(0, contentH - viewportH);
+
+    // handle wheel scroll if hovering grid viewport
+    const inGridArea = mouse.x >= gridX - 12 && mouse.x <= gridX + gridW + 12 &&
+                       mouse.y >= gridY - 10 && mouse.y <= gridY + viewportH + 10;
+    if (inGridArea && mouse.wheelDelta !== 0) {
+      game.troveScrollY += mouse.wheelDelta;
+    }
+    game.troveScrollY = Math.max(0, Math.min(maxScroll, game.troveScrollY));
+    const scrollY = game.troveScrollY;
+
+    // shelf backing for viewport
     ctx.fillStyle = '#5a3a22';
-    ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, rows * (slotSize + gap) - gap + 20);
+    ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, viewportH + 20);
     ctx.fillStyle = '#3a2414';
     ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, 4);
-    ctx.fillRect(gridX - 12, gridY + rows * (slotSize + gap) - gap + 6, gridW + 24, 4);
+    ctx.fillRect(gridX - 12, gridY + viewportH + 6, gridW + 24, 4);
+
+    // clip to viewport then draw slots
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gridX - 4, gridY - 4, gridW + 8, viewportH + 8);
+    ctx.clip();
 
     for (let i = 0; i < slotCount; i++) {
       const cx = i % cols;
       const cy = (i / cols) | 0;
       const sx = gridX + cx * (slotSize + gap);
-      const sy = gridY + cy * (slotSize + gap);
-      const hovered = mouse.x >= sx && mouse.x <= sx + slotSize && mouse.y >= sy && mouse.y <= sy + slotSize;
+      const sy = gridY + cy * (slotSize + gap) - scrollY;
+      // skip if entirely outside viewport
+      if (sy + slotSize < gridY - 4 || sy > gridY + viewportH + 4) continue;
+
+      const hovered = mouse.x >= sx && mouse.x <= sx + slotSize &&
+                      mouse.y >= sy && mouse.y <= sy + slotSize &&
+                      mouse.y >= gridY && mouse.y <= gridY + viewportH;
       const occupied = game.placed[i] !== null;
-      const canPlace = !occupied && game.carried.length > 0;
-      const canTake = occupied && game.carried.length < game.carriedMax;
-      // slot background
-      ctx.fillStyle = hovered && (canPlace || canTake) ? '#3a2818' : '#1a0e08';
+      const isDropTarget = game.drag && game.drag.source === 'carried' && !occupied;
+
+      // slot background — highlight when valid drop target hovered
+      let bgColor = '#1a0e08';
+      if (hovered) {
+        if (isDropTarget) bgColor = '#4a3a18';
+        else if (occupied || game.carried.length > 0) bgColor = '#3a2818';
+      }
+      ctx.fillStyle = bgColor;
       ctx.fillRect(sx, sy, slotSize, slotSize);
       // inner frame
-      ctx.fillStyle = '#8a5a30';
+      ctx.fillStyle = isDropTarget && hovered ? '#ffe080' : '#8a5a30';
       ctx.fillRect(sx, sy, slotSize, 2);
       ctx.fillRect(sx, sy + slotSize - 2, slotSize, 2);
       ctx.fillRect(sx, sy, 2, slotSize);
@@ -2150,59 +2221,95 @@
       ctx.fillRect(sx + 2, sy + 2, 1, slotSize - 4);
 
       const o = game.placed[i];
-      const sc = slotSize / 80;
-      const showLabels = slotSize >= 56;
       if (o) {
         const ot = ORE_TYPES[o];
-        // pedestal (proportional)
-        const pedW = Math.round(44 * sc), pedH = Math.round(8 * sc);
         ctx.fillStyle = '#3a2210';
-        ctx.fillRect(sx + (slotSize - pedW) / 2, sy + slotSize - Math.round(24 * sc), pedW, pedH);
-        // glow halo
+        ctx.fillRect(sx + 18, sy + slotSize - 24, 44, 8);
+        ctx.fillStyle = '#1a0e08';
+        ctx.fillRect(sx + 18, sy + slotSize - 16, 44, 2);
         if (ot.glow) {
           const pulse = 0.6 + 0.3 * Math.sin(game.timeAcc * 3 + i);
           ctx.globalAlpha = 0.4 * pulse;
           ctx.fillStyle = ot.glow;
-          ctx.fillRect(sx + Math.round(10 * sc), sy + Math.round(16 * sc),
-                       Math.round(60 * sc), Math.round(30 * sc));
+          ctx.fillRect(sx + 10, sy + 16, 60, 30);
           ctx.globalAlpha = 1;
         }
-        // ore gem (scaled)
-        const gemW = Math.max(10, Math.round(24 * sc));
-        const gemH = Math.max(8,  Math.round(18 * sc));
-        const gemX = sx + Math.round((slotSize - gemW) / 2);
-        const gemY = sy + Math.round(slotSize * 0.27);
         ctx.fillStyle = ot.color;
-        ctx.fillRect(gemX, gemY, gemW, gemH);
+        ctx.fillRect(sx + 28, sy + 22, 24, 18);
         ctx.fillStyle = ot.edge;
-        ctx.fillRect(gemX, gemY + gemH - Math.max(2, Math.round(4 * sc)), gemW, Math.max(2, Math.round(4 * sc)));
-        ctx.fillRect(gemX + gemW - Math.max(2, Math.round(4 * sc)), gemY, Math.max(2, Math.round(4 * sc)), gemH);
+        ctx.fillRect(sx + 28, sy + 36, 24, 4);
+        ctx.fillRect(sx + 48, sy + 22, 4, 18);
         ctx.fillStyle = ot.spec;
-        ctx.fillRect(gemX + 2, gemY + 2, Math.max(3, Math.round(6 * sc)), Math.max(2, Math.round(3 * sc)));
-        if (showLabels) {
-          pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
-          pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
-        }
-        if (hovered && canTake) {
+        ctx.fillRect(sx + 30, sy + 24, 6, 3);
+        ctx.fillRect(sx + 30, sy + 24, 3, 6);
+        pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
+        pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+        if (hovered && game.carried.length < game.carriedMax && !game.drag) {
           pixelText('take', sx + slotSize / 2, sy + 4, 9, '#ffe080', 'center');
         }
       } else {
         pixelText('—', sx + slotSize / 2, sy + slotSize / 2 - 4, 14, '#3a2818', 'center');
-        if (canPlace && hovered) {
-          pixelText('place', sx + slotSize / 2, sy + slotSize / 2 + 12, 9, '#aaa', 'center');
+        if (hovered) {
+          if (isDropTarget) {
+            pixelText('drop', sx + slotSize / 2, sy + slotSize / 2 + 12, 10, '#ffe080', 'center');
+          } else if (game.carried.length > 0 && !game.drag) {
+            pixelText('place', sx + slotSize / 2, sy + slotSize / 2 + 12, 9, '#aaa', 'center');
+          }
         }
       }
-      if (hovered && mouse.clicked) {
-        if (canPlace) {
-          const ore = game.carried.shift();
-          game.placed[i] = ore;
-          sendPlacedSync();
-        } else if (canTake) {
-          game.carried.push(game.placed[i]);
-          game.placed[i] = null;
-          sendPlacedSync();
+
+      // mouseup over this slot — handle drop or click
+      if (hovered && mouse.released) {
+        if (game.drag && game.drag.source === 'carried' && !occupied) {
+          // DROP: place dragged ore here, remove from carried
+          if (game.drag.idx < game.carried.length && game.carried[game.drag.idx] === game.drag.type) {
+            game.placed[i] = game.drag.type;
+            game.carried.splice(game.drag.idx, 1);
+            sendPlacedSync();
+            game.drag = null;
+          }
+        } else if (!mouse.releasedAsDrag && !game.drag) {
+          // single click semantics
+          if (occupied && game.carried.length < game.carriedMax) {
+            game.carried.push(o);
+            game.placed[i] = null;
+            sendPlacedSync();
+          } else if (!occupied && game.carried.length > 0) {
+            const ore = game.carried.shift();
+            game.placed[i] = ore;
+            sendPlacedSync();
+          }
         }
       }
+    }
+    ctx.restore(); // end clip
+
+    // scrollbar on the right edge of the viewport if scrollable
+    if (maxScroll > 0) {
+      const sbX = gridX + gridW + 4;
+      const sbW = 6;
+      ctx.fillStyle = '#1a0e08';
+      ctx.fillRect(sbX, gridY, sbW, viewportH);
+      const thumbH = Math.max(20, viewportH * (viewportH / contentH));
+      const thumbY = gridY + (scrollY / maxScroll) * (viewportH - thumbH);
+      ctx.fillStyle = '#8a5a30';
+      ctx.fillRect(sbX, thumbY, sbW, thumbH);
+      ctx.fillStyle = '#ffe080';
+      ctx.fillRect(sbX, thumbY, sbW, 2);
+      // tiny arrows for touch users
+      ctx.fillStyle = '#3a2414';
+      ctx.fillRect(sbX - 16, gridY, 14, 14);
+      ctx.fillRect(sbX - 16, gridY + viewportH - 14, 14, 14);
+      pixelText('^', sbX - 9, gridY + 1, 12, '#ffe080', 'center');
+      pixelText('v', sbX - 9, gridY + viewportH - 13, 12, '#ffe080', 'center');
+      // up arrow click
+      const upHover = mouse.x >= sbX - 16 && mouse.x <= sbX - 2 &&
+                      mouse.y >= gridY && mouse.y <= gridY + 14;
+      if (upHover && mouse.clicked) game.troveScrollY = Math.max(0, scrollY - 88);
+      // down arrow click
+      const dnHover = mouse.x >= sbX - 16 && mouse.x <= sbX - 2 &&
+                      mouse.y >= gridY + viewportH - 14 && mouse.y <= gridY + viewportH;
+      if (dnHover && mouse.clicked) game.troveScrollY = Math.min(maxScroll, scrollY + 88);
     }
 
     // Action buttons row above the tray
@@ -2222,11 +2329,11 @@
     // current slot count display
     pixelText(`SLOTS: ${placedSlotCount()}`, W / 2 + 180, H - 124, 11, C.textDim);
 
-    // carried ores tray — adapts width/slot-size to backpack-expanded capacity
+    // CARRIED tray — drag from here onto a placed slot, or click to sell
     const trayW = Math.max(400, 24 + game.carriedMax * 26);
     const trayX = (W - trayW) / 2;
     panel(trayX, H - 96, trayW, 60);
-    pixelText('CARRIED   (click ore to sell)', trayX + 8, H - 90, 11, C.textDim);
+    pixelText('CARRIED   (drag to slot, or click to sell)', trayX + 8, H - 90, 11, C.textDim);
     const slotsCount = game.carriedMax;
     const usable = trayW - 16;
     const stepW = Math.min(30, Math.floor(usable / slotsCount));
@@ -2243,15 +2350,19 @@
         const ore = game.carried[i];
         const iconSize = Math.max(8, slotPix - 4);
         const iconOff = (slotPix - iconSize) / 2;
-        drawOreIcon(cx + iconOff, cy + iconOff, ore, iconSize);
-        // hover to show sell hint + click to sell single
+        // hide icon if this is the source of an active drag (it follows the cursor instead)
+        const isDragSrc = game.drag && game.drag.source === 'carried' && game.drag.idx === i;
+        if (!isDragSrc) drawOreIcon(cx + iconOff, cy + iconOff, ore, iconSize);
         const hovered = mouse.x >= cx && mouse.x <= cx + slotPix && mouse.y >= cy && mouse.y <= cy + slotPix;
         if (hovered) {
           ctx.fillStyle = 'rgba(255,224,128,0.18)';
           ctx.fillRect(cx, cy, slotPix, slotPix);
           const value = ORE_TYPES[ore].value * SELL_MULT;
           pixelText('$' + value, cx + slotPix / 2, cy - 12, 10, '#ffe080', 'center');
-          if (mouse.clicked) sellOreAt(i);
+          // mousedown starts a drag (defers sell to mouseup)
+          if (mouse.clicked && !game.drag) {
+            game.drag = { source: 'carried', idx: i, type: ore };
+          }
         }
       }
     }
@@ -2266,6 +2377,28 @@
     }
     if (input('b') && justPressed['b'] !== undefined) {
       game.scene = 'surface';
+    }
+
+    // resolve a drag that wasn't consumed by a slot drop
+    if (mouse.released && game.drag) {
+      if (!mouse.releasedAsDrag && game.drag.source === 'carried') {
+        // it was a click, not a drag → sell the ore
+        sellOreAt(game.drag.idx);
+      }
+      game.drag = null;
+    }
+
+    // draw the dragged ore at cursor position (ghost) — drawn last so it's on top
+    if (game.drag && mouse.down) {
+      const t = game.drag.type;
+      const ot = ORE_TYPES[t];
+      if (ot.glow) {
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = ot.glow;
+        ctx.fillRect(mouse.x - 12, mouse.y - 12, 24, 24);
+        ctx.globalAlpha = 1;
+      }
+      drawOreIcon(mouse.x - 8, mouse.y - 8, t, 16);
     }
   }
 
@@ -2697,6 +2830,9 @@
     if (game.scene === 'surface') updateSurface(DT);
     else if (game.scene === 'shaft') updateShaft(DT);
 
+    // drop any pending drag if we leave the base scene
+    if (game.scene !== 'base' && game.drag) game.drag = null;
+
     updateParticles();
 
     if (game.screenShake > 0) game.screenShake--;
@@ -2768,6 +2904,9 @@
     sendUpdate();
     draw();
     mouse.clicked = false;
+    mouse.released = false;
+    mouse.releasedAsDrag = false;
+    mouse.wheelDelta = 0;
   }, 1000 / 20);
 
 })();
