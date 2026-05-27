@@ -335,17 +335,15 @@ io.on('connection', (socket) => {
         delete gameState.players[sid];
       }
     }
-    // verify auth token if provided; trust the username on the user record
+    // Username comes ONLY from a valid auth token — the client cannot spoof.
+    // Unauthenticated sockets show as 'anon' regardless of what they send.
     let name = null;
     if (data.token) {
       const u = findUserByToken(data.token);
       if (u) { name = u.username; ensureGameData(u); }
     }
-    if (!name && typeof data.username === 'string') {
-      name = data.username.slice(0, 20).replace(/[^a-zA-Z0-9_-]/g, '') || null;
-    }
     socket.data = socket.data || {};
-    socket.data.username = name; // null for anon
+    socket.data.username = name; // null for anon (ephemeral data, no impersonation)
 
     const myData = gameDataFor(socket);
     gameState.players[socket.id] = {
