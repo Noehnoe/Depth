@@ -308,6 +308,7 @@ function broadcastState() {
       weights: d.weights,
       belts: d.belts,
       backpacks: d.backpacks,
+      troveExpansions: d.troveExpansions,
       oxygenTanks: d.oxygenTanks,
       placedOres: d.placedOres,
     });
