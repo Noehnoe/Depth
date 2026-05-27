@@ -375,7 +375,7 @@
   function input(name) { return keys[name]; }
 
   // ---------- AUTH ----------
-  const auth = { token: null, username: null };
+  const auth = { token: null, username: null, isAdmin: false };
 
   const loginOverlay = document.getElementById('loginOverlay');
   const tabLogin = document.getElementById('tabLogin');
@@ -434,6 +434,7 @@
     }
     auth.token = data.token;
     auth.username = data.username;
+    auth.isAdmin = !!data.isAdmin;
     try { localStorage.setItem('depthAuth', JSON.stringify(auth)); } catch (e) {}
     // wipe any leftover client-side economy so we don't briefly show prior data
     resetLocalEconomy();
@@ -452,6 +453,9 @@
     game.carriedMax = 12;
     game.oxygenMax = 100;
     game.oxygen = 100;
+    game.hp = 100;
+    game.maxHp = 100;
+    game.suffocating = false;
     game.carried = [];
     game.placed = new Array(12).fill(null);
   }
@@ -470,6 +474,7 @@
     if (ok && data.username) {
       auth.token = stored.token;
       auth.username = data.username;
+      auth.isAdmin = !!data.isAdmin;
       game.scene = 'menu';
       if (!net.sock) initNetwork();
     } else {
@@ -612,6 +617,7 @@
     titleFlash: 0,
     troveScrollY: 0,
     drag: null, // { source: 'carried'|'placed', idx, type }
+    visit: null, // when set, base interior is viewing another user's trove (read-only)
   };
 
   // ---------- MULTIPLAYER ----------
@@ -685,6 +691,12 @@
     });
     net.sock.on('purchase_failed', (info) => {
       console.log('[purchase failed]', info);
+    });
+    net.sock.on('force_reload', (info) => {
+      try {
+        alert('Server restart triggered' + (info && info.by ? ' by ' + info.by : '') + ' — reloading.');
+      } catch (e) {}
+      setTimeout(() => location.reload(), 200);
     });
   }
 
@@ -1180,9 +1192,23 @@
     const pcx = p.x + p.w / 2;
     if ((input('w') || input('arrowup')) && p.onGround) {
       if (pcx >= BASE_X && pcx <= BASE_X + BASE_W) {
+        game.visit = null;
         game.scene = 'base';
       } else if (pcx >= SHOP_X && pcx <= SHOP_X + SHOP_W) {
         game.scene = 'shop';
+      } else {
+        // check remote players' houses
+        const remoteIds = Object.keys(net.remotePlayers);
+        for (let i = 0; i < remoteIds.length; i++) {
+          const hx = remoteHouseX(i);
+          if (pcx >= hx && pcx <= hx + BASE_W) {
+            const sid = remoteIds[i];
+            const rp = net.remotePlayers[sid];
+            const name = rp && rp.name && rp.name !== 'anon' ? rp.name : null;
+            if (name) openVisit(name);
+            break;
+          }
+        }
       }
     }
 
@@ -2211,6 +2237,7 @@
 
   // ---------- BASE INTERIOR ----------
   function drawBaseScreen() {
+    if (game.visit) { drawVisitScreen(); return; }
     // wallpaper
     ctx.fillStyle = '#3a2418';
     ctx.fillRect(0, 0, W, H);
@@ -2497,6 +2524,137 @@
     }
   }
 
+  // Read-only view of another player's trove
+  function drawVisitScreen() {
+    ctx.fillStyle = '#1f1822';
+    ctx.fillRect(0, 0, W, H);
+    // wallpaper stripes (slightly different tint to feel "elsewhere")
+    ctx.fillStyle = '#2a1f30';
+    for (let x = 0; x < W; x += 24) ctx.fillRect(x, 0, 12, H - 80);
+    ctx.fillStyle = '#1a0e08';
+    ctx.fillRect(0, H - 100, W, 4);
+    ctx.fillStyle = '#5a4828';
+    ctx.fillRect(0, H - 96, W, 96);
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = '#2a2018';
+      ctx.fillRect(0, H - 88 + i * 12, W, 1);
+    }
+
+    const v = game.visit;
+    pixelText('VISITING', W / 2, 14, 14, C.textDim, 'center');
+    pixelText((v.username || '?').toUpperCase() + "'S TROVE", W / 2, 32, 22, '#ffe080', 'center');
+
+    if (v.loading) {
+      pixelText('loading...', W / 2, H / 2, 14, '#fff', 'center');
+    } else if (v.error || !v.data) {
+      pixelText(v.error || 'no data', W / 2, H / 2, 14, '#ff8080', 'center');
+    } else {
+      pixelText(`income: +$${v.data.passiveIncome || 0}/s`, W / 2, 56, 14, C.textHi, 'center');
+      pixelText(`money: $${Math.floor(v.data.money || 0).toLocaleString()}`, W / 2, 74, 12, C.textDim, 'center');
+
+      // mini summary of upgrades
+      const stats = [
+        `W:${v.data.weights || 0}`,
+        `B:${v.data.belts || 0}`,
+        `P:${v.data.backpacks || 0}`,
+        `T:${v.data.troveExpansions || 0}`,
+        `O2:${v.data.oxygenTanks || 0}`,
+      ];
+      pixelText(stats.join('  ·  '), W / 2, 94, 11, '#aac8ff', 'center');
+
+      // grid of their placed ores
+      const placed = Array.isArray(v.data.placedOres) ? v.data.placedOres : [];
+      const slotCount = Math.max(12, placed.length);
+      const cols = 6;
+      const totalRows = Math.ceil(slotCount / cols);
+      const gap = 8;
+      const slotSize = 80;
+      const visibleRows = 3;
+      const viewportH = visibleRows * (slotSize + gap) - gap;
+      const gridW = cols * (slotSize + gap) - gap;
+      const gridX = (W - gridW) / 2;
+      const gridY = 120;
+      const contentH = totalRows * (slotSize + gap) - gap;
+      const maxScroll = Math.max(0, contentH - viewportH);
+
+      if (mouse.x >= gridX - 12 && mouse.x <= gridX + gridW + 12 &&
+          mouse.y >= gridY - 10 && mouse.y <= gridY + viewportH + 10 &&
+          mouse.wheelDelta !== 0) {
+        game.troveScrollY += mouse.wheelDelta;
+      }
+      game.troveScrollY = Math.max(0, Math.min(maxScroll, game.troveScrollY));
+      const scrollY = game.troveScrollY;
+
+      // shelf backing
+      ctx.fillStyle = '#5a3a22';
+      ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, viewportH + 20);
+      ctx.fillStyle = '#3a2414';
+      ctx.fillRect(gridX - 12, gridY - 10, gridW + 24, 4);
+      ctx.fillRect(gridX - 12, gridY + viewportH + 6, gridW + 24, 4);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(gridX - 4, gridY - 4, gridW + 8, viewportH + 8);
+      ctx.clip();
+      for (let i = 0; i < slotCount; i++) {
+        const cx = i % cols, cy = (i / cols) | 0;
+        const sx = gridX + cx * (slotSize + gap);
+        const sy = gridY + cy * (slotSize + gap) - scrollY;
+        if (sy + slotSize < gridY - 4 || sy > gridY + viewportH + 4) continue;
+        ctx.fillStyle = '#1a0e08';
+        ctx.fillRect(sx, sy, slotSize, slotSize);
+        ctx.fillStyle = '#8a5a30';
+        ctx.fillRect(sx, sy, slotSize, 2);
+        ctx.fillRect(sx, sy + slotSize - 2, slotSize, 2);
+        ctx.fillRect(sx, sy, 2, slotSize);
+        ctx.fillRect(sx + slotSize - 2, sy, 2, slotSize);
+        const o = placed[i];
+        if (o && ORE_TYPES[o]) {
+          const ot = ORE_TYPES[o];
+          ctx.fillStyle = '#3a2210';
+          ctx.fillRect(sx + 18, sy + slotSize - 24, 44, 8);
+          if (ot.glow) {
+            const pulse = 0.6 + 0.3 * Math.sin(game.timeAcc * 3 + i);
+            ctx.globalAlpha = 0.4 * pulse;
+            ctx.fillStyle = ot.glow;
+            ctx.fillRect(sx + 10, sy + 16, 60, 30);
+            ctx.globalAlpha = 1;
+          }
+          ctx.fillStyle = ot.color;
+          ctx.fillRect(sx + 28, sy + 22, 24, 18);
+          ctx.fillStyle = ot.edge;
+          ctx.fillRect(sx + 28, sy + 36, 24, 4);
+          ctx.fillRect(sx + 48, sy + 22, 4, 18);
+          ctx.fillStyle = ot.spec;
+          ctx.fillRect(sx + 30, sy + 24, 6, 3);
+          pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
+          pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+        } else {
+          pixelText('—', sx + slotSize / 2, sy + slotSize / 2 - 4, 14, '#3a2818', 'center');
+        }
+      }
+      ctx.restore();
+
+      if (maxScroll > 0) {
+        const sbX = gridX + gridW + 4, sbW = 6;
+        ctx.fillStyle = '#1a0e08';
+        ctx.fillRect(sbX, gridY, sbW, viewportH);
+        const thumbH = Math.max(20, viewportH * (viewportH / contentH));
+        const thumbY = gridY + (scrollY / maxScroll) * (viewportH - thumbH);
+        ctx.fillStyle = '#8a5a30';
+        ctx.fillRect(sbX, thumbY, sbW, thumbH);
+      }
+    }
+
+    pixelText('read-only — you cannot take or place', W / 2, H - 110, 11, C.textDim, 'center');
+
+    if (button(W / 2 - 80, H - 50, 160, 32, 'LEAVE [B]')) {
+      game.visit = null;
+      game.scene = 'surface';
+    }
+    if (input('b')) { game.visit = null; game.scene = 'surface'; }
+  }
+
   function sellOreAt(idx) {
     if (idx < 0 || idx >= game.carried.length) return;
     const ore = game.carried[idx];
@@ -2584,8 +2742,8 @@
       desc: 'Adds +80 max O₂ and refills tank',
       stat1: `MAX O2: ${game.oxygenMax}`,
       stat2: `CURRENT: ${Math.floor(game.oxygen)}`,
-      cost: game.oxygenPrice,
-      onBuy: () => buyItem('oxygen', game.oxygenPrice, () => {
+      cost: oxygenPrice(),
+      onBuy: () => buyItem('oxygen', oxygenPrice(), () => {
         game.oxygenMax += 16;
         game.oxygen = game.oxygenMax;
       }),
@@ -2902,6 +3060,22 @@
     if (justPressed['b']) game.scene = 'menu';
   }
 
+  async function openVisit(username) {
+    game.visit = { username, loading: true, data: null };
+    game.scene = 'base';
+    try {
+      const r = await fetch('/api/visit?user=' + encodeURIComponent(username));
+      if (r.ok) {
+        game.visit.data = await r.json();
+      } else {
+        game.visit.error = 'could not load';
+      }
+    } catch (e) {
+      game.visit.error = 'network error';
+    }
+    if (game.visit) game.visit.loading = false;
+  }
+
   async function adminForceReload() {
     if (!auth.isAdmin || !auth.token) return;
     if (!confirm('Force ALL players to reload? This may interrupt their game.')) return;
@@ -3026,6 +3200,7 @@
 
     // drop any pending drag if we leave the base scene
     if (game.scene !== 'base' && game.drag) game.drag = null;
+    if (game.scene !== 'base' && game.visit) game.visit = null;
 
     updateParticles();
 
@@ -3042,6 +3217,7 @@
     ctx.clearRect(0, 0, W, H);
     if (game.scene === 'boot') drawBoot();
     else if (game.scene === 'menu') drawMenu();
+    else if (game.scene === 'leaderboards') drawLeaderboards();
     else if (game.scene === 'title') drawTitle();
     else if (game.scene === 'surface') drawSurface();
     else if (game.scene === 'shaft') drawShaft();

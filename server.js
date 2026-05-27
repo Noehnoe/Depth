@@ -98,7 +98,7 @@ app.post('/api/register', (req, res) => {
   };
   saveUsers();
   console.log(`[register] ${trimmed}`);
-  res.json({ token, username: trimmed });
+  res.json({ token, username: trimmed, isAdmin: isAdminUser(users[key]) });
 });
 
 app.post('/api/login', (req, res) => {
@@ -116,7 +116,7 @@ app.post('/api/login', (req, res) => {
   u.sessions.push({ token, expiresAt: Date.now() + SESSION_TTL_MS });
   saveUsers();
   console.log(`[login] ${u.username}`);
-  res.json({ token, username: u.username });
+  res.json({ token, username: u.username, isAdmin: isAdminUser(u) });
 });
 
 app.post('/api/me', (req, res) => {
