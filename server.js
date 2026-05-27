@@ -135,13 +135,43 @@ function isAdminUser(u) {
   return sorted.length > 0 && sorted[0].username === u.username;
 }
 
-app.post('/api/admin/force_reload', (req, res) => {
-  const { token } = req.body || {};
+// Two-factor admin gate: must be on the admin account AND know the PIN
+// (stored in env var ADMIN_PIN so it never lands in source). Without ADMIN_PIN
+// set, all admin endpoints refuse — fail-closed.
+function checkAdminAndPin(token, pin) {
   const u = findUserByToken(token);
-  if (!u || !isAdminUser(u)) return res.status(403).json({ error: 'not admin' });
-  console.log(`[admin] ${u.username} broadcast force_reload`);
-  io.emit('force_reload', { by: u.username });
+  if (!u || !isAdminUser(u)) return { ok: false, status: 403, reason: 'not_admin' };
+  const expected = process.env.ADMIN_PIN;
+  if (!expected) return { ok: false, status: 503, reason: 'pin_not_configured' };
+  if (String(pin || '') !== String(expected)) return { ok: false, status: 403, reason: 'wrong_pin' };
+  return { ok: true, user: u };
+}
+
+app.post('/api/admin/verify_pin', (req, res) => {
+  const { token, pin } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
   res.json({ ok: true });
+});
+
+app.post('/api/admin/force_reload', (req, res) => {
+  const { token, pin } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
+  console.log(`[admin] ${r.user.username} broadcast force_reload`);
+  io.emit('force_reload', { by: r.user.username });
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/stats', (req, res) => {
+  const { token, pin } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
+  res.json({
+    online: Object.keys(gameState.players).length,
+    accounts: Object.keys(users).length,
+    activeSockets: io.sockets.sockets.size,
+  });
 });
 
 app.post('/api/logout', (req, res) => {

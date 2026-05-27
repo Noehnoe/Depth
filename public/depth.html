@@ -111,6 +111,69 @@
     margin-top: 10px;
     min-height: 14px;
   }
+  #adminPinOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 11;
+    font-family: "Courier New", monospace;
+  }
+  #adminPinOverlay.show { display: flex; }
+  #adminPinCard {
+    width: min(340px, 90vw);
+    background: #120820;
+    border: 3px solid #ff4040;
+    box-shadow: 0 0 40px #ff4040, 0 0 4px #ff8080 inset;
+    padding: 22px 22px 18px;
+    color: #fff;
+    text-align: center;
+  }
+  #adminPinCard h2 {
+    margin: 0 0 6px;
+    color: #ff8080;
+    font-size: 22px;
+    letter-spacing: 3px;
+  }
+  #adminPinCard .sub {
+    color: #aa8888;
+    font-size: 11px;
+    margin-bottom: 14px;
+  }
+  #adminPinInput {
+    width: 100%;
+    box-sizing: border-box;
+    background: #06030c;
+    color: #ffe080;
+    border: 2px solid #5a1c1c;
+    padding: 14px;
+    font: bold 22px "Courier New", monospace;
+    text-align: center;
+    letter-spacing: 8px;
+    outline: none;
+  }
+  #adminPinInput:focus { border-color: #ff4040; }
+  #adminPinCard .btnRow { display: flex; gap: 8px; margin-top: 12px; }
+  #adminPinCard button {
+    flex: 1;
+    background: #3a1c1c;
+    color: #ff8080;
+    border: 2px solid #5a2c2c;
+    padding: 10px;
+    font: bold 13px "Courier New", monospace;
+    cursor: pointer;
+    letter-spacing: 2px;
+  }
+  #adminPinCard button.go { background: #5a1c1c; color: #ffe080; border-color: #ff4040; }
+  #adminPinCard button.go:hover { background: #7a2c2c; }
+  #adminPinErr {
+    color: #ff6060;
+    font-size: 12px;
+    margin-top: 8px;
+    min-height: 14px;
+  }
 </style>
 </head>
 <body>
@@ -128,6 +191,18 @@
     <input id="passInput" type="password" autocomplete="current-password" maxlength="64" />
     <button class="action" id="submitBtn">LOGIN</button>
     <div id="loginErr"></div>
+  </div>
+</div>
+<div id="adminPinOverlay">
+  <div id="adminPinCard">
+    <h2>ADMIN PIN</h2>
+    <div class="sub">restricted area</div>
+    <input id="adminPinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="10" />
+    <div class="btnRow">
+      <button id="adminPinCancel">CANCEL</button>
+      <button id="adminPinSubmit" class="go">UNLOCK</button>
+    </div>
+    <div id="adminPinErr"></div>
   </div>
 </div>
 <canvas id="game" width="800" height="600"></canvas>
@@ -2983,8 +3058,8 @@
       logout();
     }
     if (auth.isAdmin) {
-      if (button(W / 2 - 130, 392, 260, 32, '⚡ FORCE RELOAD ALL ⚡')) {
-        adminForceReload();
+      if (button(W / 2 - 130, 392, 260, 32, 'ADMIN PANEL')) {
+        openAdminPin();
       }
     }
 
@@ -3105,16 +3180,135 @@
     if (game.visit) game.visit.loading = false;
   }
 
-  async function adminForceReload() {
+  // ---------- ADMIN PANEL ----------
+  const adminPinOverlay = document.getElementById('adminPinOverlay');
+  const adminPinInput = document.getElementById('adminPinInput');
+  const adminPinSubmit = document.getElementById('adminPinSubmit');
+  const adminPinCancel = document.getElementById('adminPinCancel');
+  const adminPinErr = document.getElementById('adminPinErr');
+  let adminPin = null; // held in memory only, never persisted
+  let adminStats = null;
+
+  function openAdminPin() {
     if (!auth.isAdmin || !auth.token) return;
-    if (!confirm('Force ALL players to reload? This may interrupt their game.')) return;
+    adminPinErr.textContent = '';
+    adminPinInput.value = '';
+    adminPinOverlay.classList.add('show');
+    setTimeout(() => adminPinInput.focus(), 30);
+  }
+  function closeAdminPin() {
+    adminPinOverlay.classList.remove('show');
+  }
+  async function submitAdminPin() {
+    const pin = adminPinInput.value.trim();
+    if (!pin) { adminPinErr.textContent = 'enter the pin'; return; }
+    adminPinSubmit.disabled = true;
+    try {
+      const r = await fetch('/api/admin/verify_pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: auth.token, pin }),
+      });
+      if (r.ok) {
+        adminPin = pin;
+        closeAdminPin();
+        game.scene = 'admin';
+        refreshAdminStats();
+      } else {
+        const data = await r.json().catch(() => ({}));
+        adminPinErr.textContent = data.error === 'wrong_pin' ? 'wrong pin'
+          : data.error === 'pin_not_configured' ? 'pin not set on server'
+          : data.error === 'not_admin' ? 'not admin'
+          : 'access denied';
+      }
+    } catch (e) {
+      adminPinErr.textContent = 'network error';
+    }
+    adminPinSubmit.disabled = false;
+  }
+  adminPinSubmit.addEventListener('click', submitAdminPin);
+  adminPinCancel.addEventListener('click', () => { closeAdminPin(); });
+  adminPinInput.addEventListener('keydown', (e) => {
+    // Accept main row & numpad numeric keys; let other navigation keys behave.
+    if (e.key === 'Enter') { submitAdminPin(); e.preventDefault(); }
+    if (e.key === 'Escape') { closeAdminPin(); }
+  });
+  // strip non-digits as user types (allows numpad too — both emit digits)
+  adminPinInput.addEventListener('input', () => {
+    const cleaned = adminPinInput.value.replace(/[^0-9]/g, '');
+    if (cleaned !== adminPinInput.value) adminPinInput.value = cleaned;
+  });
+
+  async function refreshAdminStats() {
+    if (!adminPin) return;
+    try {
+      const r = await fetch('/api/admin/stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: auth.token, pin: adminPin }),
+      });
+      if (r.ok) adminStats = await r.json();
+    } catch (e) {}
+  }
+
+  async function adminForceReload() {
+    if (!auth.isAdmin || !auth.token || !adminPin) return;
+    if (!confirm('Force ALL players to reload? This kicks everyone back to the login.')) return;
     try {
       await fetch('/api/admin/force_reload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: auth.token }),
+        body: JSON.stringify({ token: auth.token, pin: adminPin }),
       });
     } catch (e) { console.error(e); }
+  }
+
+  function leaveAdmin() {
+    adminPin = null; // forget on leave; require re-entry next time
+    adminStats = null;
+    game.scene = 'menu';
+  }
+
+  function drawAdmin() {
+    // dark warning-themed background
+    ctx.fillStyle = '#100408';
+    ctx.fillRect(0, 0, W, H);
+    // scanline grid
+    ctx.fillStyle = 'rgba(255,40,40,0.04)';
+    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+    // top bar
+    ctx.fillStyle = '#3a0a0a';
+    ctx.fillRect(0, 0, W, 60);
+    ctx.fillStyle = '#ff4040';
+    ctx.fillRect(0, 58, W, 2);
+    pixelText('⚠  ADMIN PANEL  ⚠', W / 2, 18, 28, '#ff8080', 'center');
+    pixelText(`signed in as ${auth.username}`, W / 2, 48, 11, '#aa8080', 'center');
+
+    // stats
+    panel(40, 90, W - 80, 110, '#1a0810', '#ff4040', '#7a1010');
+    pixelText('SERVER STATS', 60, 100, 14, '#ff8080');
+    const online = adminStats ? adminStats.online : '?';
+    const accts = adminStats ? adminStats.accounts : '?';
+    const socks = adminStats ? adminStats.activeSockets : '?';
+    pixelText('online players: ' + online, 60, 124, 13, '#fff');
+    pixelText('total accounts: ' + accts, 60, 144, 13, '#fff');
+    pixelText('active sockets: ' + socks, 60, 164, 13, '#fff');
+    if (button(W - 180, 130, 130, 28, 'REFRESH')) refreshAdminStats();
+
+    // actions
+    panel(40, 220, W - 80, 200, '#1a0810', '#ff4040', '#7a1010');
+    pixelText('ACTIONS', 60, 230, 14, '#ff8080');
+    if (button(60, 254, W - 120, 44, '⚡ FORCE RELOAD ALL CLIENTS ⚡')) {
+      adminForceReload();
+    }
+    pixelText('Kicks every connected tab — they reload and re-login.', 60, 304, 11, '#aaa');
+    pixelText('Use after deploying updates or to clear stuck states.', 60, 320, 11, '#aaa');
+
+    // leave
+    if (button(W / 2 - 100, H - 60, 200, 38, 'LEAVE [B]')) leaveAdmin();
+    if (justPressed['b']) leaveAdmin();
+
+    pixelText('PIN cleared on leave — re-entry required next time', W / 2, H - 14, 10, '#aa8080', 'center');
   }
 
   function drawTitle() {
@@ -3247,6 +3441,7 @@
     if (game.scene === 'boot') drawBoot();
     else if (game.scene === 'menu') drawMenu();
     else if (game.scene === 'leaderboards') drawLeaderboards();
+    else if (game.scene === 'admin') drawAdmin();
     else if (game.scene === 'title') drawTitle();
     else if (game.scene === 'surface') drawSurface();
     else if (game.scene === 'shaft') drawShaft();
