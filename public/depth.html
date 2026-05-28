@@ -218,6 +218,91 @@
   }
   #machineSearch:focus { border-color: #a880ff; }
   #machineSearch.show { display: block; }
+  #adminSpawnOverlay {
+    position: fixed;
+    top: 72px;
+    right: 20px;
+    width: min(360px, 90vw);
+    height: calc(100% - 104px);
+    display: none;
+    z-index: 11;
+    background: rgba(10,8,16,0.95);
+    color: #fff;
+    border: 2px solid #5a3aa0;
+    border-radius: 12px;
+    box-shadow: 0 0 18px rgba(90,58,160,0.45);
+    padding: 12px;
+    font-family: "Courier New", monospace;
+    overflow: hidden;
+  }
+  #adminSpawnOverlay.show { display: block; }
+  #adminSpawnOverlay h3 {
+    margin: 0 0 6px;
+    font-size: 14px;
+    letter-spacing: 0.06em;
+    color: #ffe080;
+  }
+  #adminSpawnInfo {
+    margin: 0 0 10px;
+    font-size: 11px;
+    color: #ccc;
+  }
+  #adminSpawnSearch {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 0 8px;
+    background: #06030c;
+    color: #fff;
+    border: 2px solid #5a3aa0;
+    padding: 8px 10px;
+    font: 13px "Courier New", monospace;
+    outline: none;
+  }
+  #adminSpawnSearch:focus { border-color: #a880ff; }
+  #adminSpawnCount {
+    margin: 0 0 8px;
+    font-size: 11px;
+    color: #aaa;
+  }
+  #adminSpawnList {
+    width: 100%;
+    height: calc(100% - 106px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .spawnRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 8px 8px;
+    border: 1px solid #3a2a4a;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+  }
+  .spawnRowName {
+    flex: 1;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .spawnRowValue {
+    width: 84px;
+    text-align: right;
+    font-size: 11px;
+    color: #a0c0ff;
+  }
+  .spawnRow button {
+    background: #5a3aa0;
+    border: 1px solid #8a6af0;
+    color: #fff;
+    padding: 5px 8px;
+    font: 11px "Courier New", monospace;
+    cursor: pointer;
+    border-radius: 5px;
+  }
+  .spawnRow button:hover { background: #7a5ae0; }
 </style>
 </head>
 <body>
@@ -253,6 +338,13 @@
     </div>
     <div id="adminPinErr"></div>
   </div>
+</div>
+<div id="adminSpawnOverlay">
+  <h3>SPAWN ORE</h3>
+  <div id="adminSpawnInfo">best ores first — select any ore and mutation</div>
+  <input id="adminSpawnSearch" type="text" placeholder="filter ores..." maxlength="32" />
+  <div id="adminSpawnCount"></div>
+  <div id="adminSpawnList"></div>
 </div>
 <canvas id="game" width="800" height="600"></canvas>
 <script src="/socket.io/socket.io.js"></script>
@@ -4064,10 +4156,16 @@
   const adminPinSubmit = document.getElementById('adminPinSubmit');
   const adminPinCancel = document.getElementById('adminPinCancel');
   const adminPinErr = document.getElementById('adminPinErr');
+  const adminSpawnOverlay = document.getElementById('adminSpawnOverlay');
+  const adminSpawnSearch = document.getElementById('adminSpawnSearch');
+  const adminSpawnList = document.getElementById('adminSpawnList');
+  const adminSpawnCount = document.getElementById('adminSpawnCount');
+  const adminSpawnInfo = document.getElementById('adminSpawnInfo');
   let adminPin = null; // held in memory only, never persisted
   let adminStats = null;
   let adminPlayers = []; // [{ sid, name, depth, alive }]
   let adminRefreshAcc = 0;
+  let adminSpawnOreTypes = [];
 
   function openAdminPin() {
     if (!auth.isAdmin || !auth.token) return;
@@ -4102,6 +4200,7 @@
         adminRefreshAcc = 0;
         refreshAdminStats();
         refreshAdminPlayers();
+        showAdminSpawnPanel();
       } else {
         const data = await r.json().catch(() => ({}));
         adminPinErr.textContent = data.error === 'wrong_pin' ? 'wrong pin'
@@ -4130,6 +4229,54 @@
     const cleaned = adminPinInput.value.replace(/[^0-9]/g, '');
     if (cleaned !== adminPinInput.value) adminPinInput.value = cleaned;
   });
+
+  function initAdminSpawn() {
+    adminSpawnOreTypes = Object.keys(ORE_TYPES).sort((a, b) => ORE_TYPES[b].value - ORE_TYPES[a].value);
+    refreshAdminSpawnList();
+    adminSpawnSearch.addEventListener('input', refreshAdminSpawnList);
+    adminSpawnList.addEventListener('click', (e) => {
+      const button = e.target.closest('button[data-ore]');
+      if (!button) return;
+      spawnAdminOre(button.dataset.ore);
+    });
+  }
+
+  function refreshAdminSpawnList() {
+    const query = adminSpawnSearch.value.trim().toLowerCase();
+    const visible = adminSpawnOreTypes.filter(type => {
+      const ore = ORE_TYPES[type];
+      return ore.name.toLowerCase().includes(query) || type.toLowerCase().includes(query);
+    });
+    adminSpawnCount.textContent = `${visible.length} ores shown`;
+    adminSpawnList.innerHTML = visible.map(type => {
+      const ore = ORE_TYPES[type];
+      return `
+        <div class="spawnRow">
+          <div class="spawnRowName">${ore.name}</div>
+          <div class="spawnRowValue">${fmtShort(ore.value)}</div>
+          <button type="button" data-ore="${type}">SPAWN</button>
+        </div>`;
+    }).join('');
+  }
+
+  function showAdminSpawnPanel() {
+    adminSpawnOverlay.classList.add('show');
+    refreshAdminSpawnList();
+  }
+
+  function hideAdminSpawnPanel() {
+    adminSpawnOverlay.classList.remove('show');
+  }
+
+  function spawnAdminOre(type) {
+    if (!auth.isAdmin || game.scene !== 'admin') return;
+    if (!ORE_TYPES[type]) return;
+    game.carried.push(type);
+    adminSpawnInfo.textContent = `spawned ${ORE_TYPES[type].name} into inventory` +
+      (game.carried.length > game.carriedMax ? ' (overflow allowed)' : '');
+  }
+
+  initAdminSpawn();
 
   async function refreshAdminStats() {
     if (!adminPin) return;
@@ -4208,6 +4355,7 @@
     adminPin = null; // forget on leave; require re-entry next time
     adminStats = null;
     adminPlayers = [];
+    hideAdminSpawnPanel();
     game.scene = 'menu';
   }
 
