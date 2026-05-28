@@ -398,6 +398,10 @@ function scheduleSave() {
 }
 
 io.on('connection', (socket) => {
+  // Identity only — does NOT add the socket to the visible-in-world players list.
+  // Client must additionally emit `player_active` once they're actually in a
+  // game scene (surface/shaft/base/shop). This keeps menu/leaderboard/admin
+  // viewers from appearing as ghost players in the world.
   socket.on('player_join', (data = {}) => {
     // sweep ghosts: any player whose socket isn't actually connected anymore
     const activeSids = new Set(Array.from(io.sockets.sockets.keys()));
@@ -407,17 +411,22 @@ io.on('connection', (socket) => {
         delete gameState.players[sid];
       }
     }
-    // Username comes ONLY from a valid auth token — the client cannot spoof.
-    // Unauthenticated sockets show as 'anon' regardless of what they send.
     let name = null;
     if (data.token) {
       const u = findUserByToken(data.token);
       if (u) { name = u.username; ensureGameData(u); }
     }
     socket.data = socket.data || {};
-    socket.data.username = name; // null for anon (ephemeral data, no impersonation)
+    socket.data.username = name;
+    console.log(`[connect] ${socket.id} as ${name || 'anon'}`);
+    broadcastState();
+  });
 
+  // Enter the world — adds the socket to gameState.players. Idempotent.
+  socket.on('player_active', () => {
+    if (gameState.players[socket.id]) return;
     const myData = gameDataFor(socket);
+    const name = (socket.data && socket.data.username) || null;
     gameState.players[socket.id] = {
       x: SPAWN.x,
       y: SPAWN.y,
@@ -427,7 +436,17 @@ io.on('connection', (socket) => {
       alive: true,
       name: name || 'anon',
     };
-    console.log(`[join] player ${socket.id} as ${name || 'anon'} (${Object.keys(gameState.players).length} online)`);
+    console.log(`[active] ${name || socket.id} (${Object.keys(gameState.players).length} in world)`);
+    broadcastState();
+  });
+
+  // Leave the world (back to menu/leaderboards/admin) — removes from players.
+  // Socket stays connected so chat / state sync continues.
+  socket.on('player_inactive', () => {
+    if (!gameState.players[socket.id]) return;
+    delete gameState.players[socket.id];
+    const name = (socket.data && socket.data.username) || socket.id;
+    console.log(`[inactive] ${name} (${Object.keys(gameState.players).length} in world)`);
     broadcastState();
   });
 

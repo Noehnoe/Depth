@@ -759,6 +759,7 @@
     connected: false,
     remotePlayers: {}, // socketId -> { x, y, depth, oxygen, carrying, alive }
     lastSent: 0,
+    lastInGame: false, // toggles player_active/inactive emits on transition
     playerOrder: [], // ordered socketIds (including own) — for stable house slot assignment
   };
 
@@ -842,8 +843,20 @@
     net.sock.emit('set_all_placed', { placed: game.placed });
   }
 
+  // Scenes where the player is actually IN the game world and should be visible
+  // to other players. Menu/leaderboards/admin/title/login/boot are excluded.
+  const IN_GAME_SCENES = { surface:1, shaft:1, base:1, shop:1, dead:1 };
+  function isInGameScene() { return !!IN_GAME_SCENES[game.scene]; }
+
   function sendUpdate() {
     if (!net.connected || !net.sock) return;
+    // Watch for scene transitions and tell the server whether we're in-world.
+    const nowInGame = isInGameScene();
+    if (nowInGame !== net.lastInGame) {
+      net.sock.emit(nowInGame ? 'player_active' : 'player_inactive');
+      net.lastInGame = nowInGame;
+    }
+    if (!nowInGame) return; // don't broadcast position from outside the game
     if (game.timeAcc - net.lastSent < 0.12) return;
     net.lastSent = game.timeAcc;
     net.sock.emit('player_update', {
@@ -1434,7 +1447,7 @@
     if (game.depth > game.maxDepth) game.maxDepth = game.depth;
 
     if (game.oxygen > 0) {
-      game.oxygen -= 4 * dt;
+      game.oxygen -= 2 * dt; // halved (was 4) — idle play in the cave is now manageable
       game.suffocating = false;
     }
     if (game.oxygen <= 0) {
