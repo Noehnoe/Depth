@@ -205,6 +205,19 @@
     outline: none;
   }
   #chatInput:focus { border-color: #a880ff; }
+  #machineSearch {
+    position: fixed;
+    display: none;
+    z-index: 8;
+    background: #06030c;
+    color: #fff;
+    border: 2px solid #5a3aa0;
+    padding: 6px 10px;
+    font: 13px "Courier New", monospace;
+    outline: none;
+  }
+  #machineSearch:focus { border-color: #a880ff; }
+  #machineSearch.show { display: block; }
 </style>
 </head>
 <body>
@@ -228,6 +241,7 @@
   <span id="chatPrompt">SAY:</span>
   <input id="chatInput" type="text" maxlength="200" autocomplete="off" />
 </div>
+<input id="machineSearch" type="text" placeholder="search ore name..." autocomplete="off" maxlength="32" />
 <div id="adminPinOverlay">
   <div id="adminPinCard">
     <h2>ADMIN PIN</h2>
@@ -3120,17 +3134,36 @@
   // ---------- CONVERSION MACHINE ----------
   function openMachine() {
     game.scene = 'machine';
-    game.machine = { input: [], source: [] }; // input[]=types, source[]={from:'carried'|'placed', idx}
+    game.machine = {
+      input: [], source: [],
+      search: '',
+      filter: null, // null | 'normal' | 'gold' | 'diamond' | 'rainbow'
+    };
+    machineSearchInput.value = '';
+    machineSearchInput.classList.add('show');
+    positionMachineSearch();
+    setTimeout(() => machineSearchInput.focus(), 30);
   }
 
   function closeMachine() {
-    // return any pending inputs to where they came from
-    if (game.machine && game.machine.source) {
-      // already pulled from arrays; we kept references — so just clear
-    }
+    machineSearchInput.classList.remove('show');
+    machineSearchInput.blur();
     game.machine = null;
     game.scene = 'surface';
   }
+
+  function positionMachineSearch() {
+    // align over the canvas where the search bar sits in the drawn UI
+    const r = canvas.getBoundingClientRect();
+    const xScale = r.width / W, yScale = r.height / H;
+    const ix = 40, iy = 200, iw = 280, ih = 28; // canvas-space slot for the bar
+    machineSearchInput.style.left = (r.left + ix * xScale) + 'px';
+    machineSearchInput.style.top = (r.top + iy * yScale) + 'px';
+    machineSearchInput.style.width = (iw * xScale - 24) + 'px';
+    machineSearchInput.style.height = (ih * yScale - 16) + 'px';
+    machineSearchInput.style.fontSize = Math.max(11, Math.round(13 * yScale)) + 'px';
+  }
+  window.addEventListener('resize', () => { if (game.machine) positionMachineSearch(); });
 
   // Determine what an input array would convert into.
   // Rules:
@@ -3303,16 +3336,41 @@
       game.machine.source = [];
     }
 
-    // SOURCE: carried + placed (clickable to add to inputs)
-    const listY0 = slotY + slotSize + 30;
-    pixelText('YOUR ORES (click to add)', W / 2, listY0, 12, '#fff', 'center');
-    const colW = (W - 80) / 2;
-    const carriedX = 40;
-    const placedX = 40 + colW + 8;
-    const listTop = listY0 + 20;
-    const listH = H - listTop - 70;
-    pixelText('CARRIED', carriedX + 8, listTop - 16, 11, C.textDim);
-    pixelText('FROM HOUSE', placedX + 8, listTop - 16, 11, C.textDim);
+    // SEARCH + FILTER bar (search input is an HTML element overlaid at (40, 200, 280, 28))
+    pixelText('YOUR ORES (click to add)', W / 2, 184, 12, '#fff', 'center');
+    // search bar background (the HTML <input> sits on top of this)
+    pixelText('SEARCH:', 50, 207, 11, C.textDim);
+    // ensure HTML input is visible + positioned
+    if (!machineSearchInput.classList.contains('show')) {
+      machineSearchInput.classList.add('show');
+      positionMachineSearch();
+    }
+
+    // quality filter buttons
+    const filters = [
+      { key: 'normal',  label: 'REGULAR',  color: '#cccccc' },
+      { key: 'gold',    label: 'GOLD',     color: '#fff080' },
+      { key: 'diamond', label: 'DIAMOND',  color: '#80f8ff' },
+      { key: 'rainbow', label: 'RAINBOW',  color: '#ff80ff' },
+    ];
+    const fX = 340, fY = 200, fW = 100, fH = 28, fGap = 6;
+    for (let i = 0; i < filters.length; i++) {
+      const f = filters[i];
+      const bx = fX + i * (fW + fGap);
+      const active = game.machine.filter === f.key;
+      ctx.fillStyle = active ? '#3a2a18' : '#1a1a24';
+      ctx.fillRect(bx, fY, fW, fH);
+      ctx.fillStyle = active ? f.color : '#3a3a48';
+      ctx.fillRect(bx, fY, fW, 2);
+      ctx.fillRect(bx, fY + fH - 2, fW, 2);
+      ctx.fillRect(bx, fY, 2, fH);
+      ctx.fillRect(bx + fW - 2, fY, 2, fH);
+      pixelText(f.label, bx + fW / 2, fY + 9, 11, active ? f.color : '#aaa', 'center');
+      const hov = mouse.x >= bx && mouse.x <= bx + fW && mouse.y >= fY && mouse.y <= fY + fH;
+      if (hov && mouse.clicked) {
+        game.machine.filter = (game.machine.filter === f.key) ? null : f.key;
+      }
+    }
 
     // helper to draw an ore card
     function drawOreCard(x, y, w, h, type, onClick) {
@@ -3334,32 +3392,43 @@
       if (hovered && mouse.clicked) onClick();
     }
 
-    // Carried list (scrollable not implemented, just rows)
-    const rowH = 28;
-    const carriedItems = game.carried;
-    const maxRows = Math.floor(listH / (rowH + 2));
-    for (let i = 0; i < Math.min(carriedItems.length, maxRows); i++) {
-      const t = carriedItems[i];
-      drawOreCard(carriedX, listTop + i * (rowH + 2), colW, rowH, t, () => machineAddInput('carried', i));
-    }
-    if (carriedItems.length > maxRows) {
-      pixelText(`... +${carriedItems.length - maxRows} more`, carriedX + 8, listTop + maxRows * (rowH + 2), 10, '#aaa');
-    }
-    if (carriedItems.length === 0) pixelText('(empty)', carriedX + 8, listTop + 8, 11, '#666');
-
-    // Placed list (skip nulls)
-    const placedItems = [];
+    // BUILD UNIFIED FILTERED LIST: every ore the player owns, with where it came from
+    const pool = []; // { type, from, idx }
+    for (let i = 0; i < game.carried.length; i++) pool.push({ type: game.carried[i], from: 'carried', idx: i });
     for (let i = 0; i < game.placed.length; i++) {
-      if (game.placed[i]) placedItems.push({ type: game.placed[i], idx: i });
+      if (game.placed[i]) pool.push({ type: game.placed[i], from: 'placed', idx: i });
     }
-    for (let i = 0; i < Math.min(placedItems.length, maxRows); i++) {
-      const it = placedItems[i];
-      drawOreCard(placedX, listTop + i * (rowH + 2), colW, rowH, it.type, () => machineAddInput('placed', it.idx));
+    const searchTerm = (game.machine.search || '').trim();
+    const filtered = pool.filter((p) => {
+      const ot = ORE_TYPES[p.type];
+      if (!ot) return false;
+      if (game.machine.filter && ot.quality !== game.machine.filter) return false;
+      if (searchTerm && !ot.name.toLowerCase().includes(searchTerm)) return false;
+      return true;
+    });
+
+    // RENDER 2-column list in the area below the search/filter row
+    const listTop = 244;
+    const listH = H - listTop - 70;
+    const cardW = (W - 80) / 2;
+    const cardH = 28;
+    const cardsPerCol = Math.max(1, Math.floor(listH / (cardH + 2)));
+    const maxCards = cardsPerCol * 2;
+    for (let i = 0; i < Math.min(filtered.length, maxCards); i++) {
+      const p = filtered[i];
+      const col = (i / cardsPerCol) | 0;
+      const row = i % cardsPerCol;
+      const x = 40 + col * (cardW + 8);
+      const y = listTop + row * (cardH + 2);
+      drawOreCard(x, y, cardW, cardH, p.type, () => machineAddInput(p.from, p.idx));
     }
-    if (placedItems.length > maxRows) {
-      pixelText(`... +${placedItems.length - maxRows} more`, placedX + 8, listTop + maxRows * (rowH + 2), 10, '#aaa');
+    if (filtered.length === 0) {
+      const msg = pool.length === 0 ? '(you have no ores)' : '(no ores match the filter)';
+      pixelText(msg, W / 2, listTop + 24, 12, '#666', 'center');
     }
-    if (placedItems.length === 0) pixelText('(none placed)', placedX + 8, listTop + 8, 11, '#666');
+    if (filtered.length > maxCards) {
+      pixelText(`... +${filtered.length - maxCards} more — narrow the filter to see all`, W / 2, listTop + listH - 8, 10, '#aaa', 'center');
+    }
 
     // money top right
     panel(W - 200, H - 50, 184, 36, '#0e0820');
@@ -3771,6 +3840,15 @@
   // ---------- CHAT ----------
   const chatOverlay = document.getElementById('chatOverlay');
   const chatInput = document.getElementById('chatInput');
+  const machineSearchInput = document.getElementById('machineSearch');
+  machineSearchInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { machineSearchInput.value = ''; if (game.machine) game.machine.search = ''; }
+  });
+  machineSearchInput.addEventListener('keyup', (e) => { e.stopPropagation(); });
+  machineSearchInput.addEventListener('input', () => {
+    if (game.machine) game.machine.search = machineSearchInput.value.toLowerCase();
+  });
   const chatMessages = []; // { from, text, ts }
   const CHAT_VISIBLE_MS = 8000;
   const CHAT_FADE_MS = 2000;
