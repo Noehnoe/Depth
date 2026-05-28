@@ -247,6 +247,37 @@
     font-size: 11px;
     color: #ccc;
   }
+  #adminSpawnTarget {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 0 8px;
+    background: #06030c;
+    color: #fff;
+    border: 2px solid #5a3aa0;
+    padding: 8px 10px;
+    font: 13px "Courier New", monospace;
+    outline: none;
+  }
+  #adminSpawnQualityRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 10px;
+  }
+  .qualityBtn {
+    flex: 1 1 50px;
+    border: 1px solid #5a3aa0;
+    background: #06030c;
+    color: #fff;
+    padding: 6px 8px;
+    font: 11px "Courier New", monospace;
+    cursor: pointer;
+    border-radius: 6px;
+  }
+  .qualityBtn.active {
+    background: #7a5ae0;
+    border-color: #a8a0ff;
+  }
   #adminSpawnSearch {
     width: 100%;
     box-sizing: border-box;
@@ -342,6 +373,14 @@
 <div id="adminSpawnOverlay">
   <h3>SPAWN ORE</h3>
   <div id="adminSpawnInfo">best ores first — select any ore and mutation</div>
+  <input id="adminSpawnTarget" type="text" placeholder="target username (leave blank for local)" maxlength="20" />
+  <div id="adminSpawnQualityRow">
+    <button type="button" data-quality="all" class="qualityBtn active">ALL</button>
+    <button type="button" data-quality="normal" class="qualityBtn">REGULAR</button>
+    <button type="button" data-quality="gold" class="qualityBtn">GOLD</button>
+    <button type="button" data-quality="diamond" class="qualityBtn">DIAMOND</button>
+    <button type="button" data-quality="rainbow" class="qualityBtn">RAINBOW</button>
+  </div>
   <input id="adminSpawnSearch" type="text" placeholder="filter ores..." maxlength="32" />
   <div id="adminSpawnCount"></div>
   <div id="adminSpawnList"></div>
@@ -1029,6 +1068,13 @@
       const text = `YOU HAVE BEEN FORCE RELOADED BY ${adminName}` + (customMessage ? `\n\n${customMessage}` : '');
       try { alert(text); } catch (e) {}
       setTimeout(() => location.reload(), 200);
+    });
+    net.sock.on('admin_granted_ore', (info) => {
+      if (!info || !info.oreType) return;
+      if (!Array.isArray(game.carried)) game.carried = [];
+      game.carried.push(info.oreType);
+      const oreName = (ORE_TYPES[info.oreType] && ORE_TYPES[info.oreType].name) || info.oreType;
+      showCollectToast(`Admin granted ${oreName}`);
     });
   }
 
@@ -4157,6 +4203,8 @@
   const adminPinCancel = document.getElementById('adminPinCancel');
   const adminPinErr = document.getElementById('adminPinErr');
   const adminSpawnOverlay = document.getElementById('adminSpawnOverlay');
+  const adminSpawnTarget = document.getElementById('adminSpawnTarget');
+  const adminSpawnQualityRow = document.getElementById('adminSpawnQualityRow');
   const adminSpawnSearch = document.getElementById('adminSpawnSearch');
   const adminSpawnList = document.getElementById('adminSpawnList');
   const adminSpawnCount = document.getElementById('adminSpawnCount');
@@ -4166,6 +4214,7 @@
   let adminPlayers = []; // [{ sid, name, depth, alive }]
   let adminRefreshAcc = 0;
   let adminSpawnOreTypes = [];
+  let adminSpawnQuality = 'all';
 
   function openAdminPin() {
     if (!auth.isAdmin || !auth.token) return;
@@ -4230,10 +4279,23 @@
     if (cleaned !== adminPinInput.value) adminPinInput.value = cleaned;
   });
 
+  function setAdminSpawnQuality(value) {
+    adminSpawnQuality = value;
+    adminSpawnQualityRow.querySelectorAll('button[data-quality]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.quality === value);
+    });
+    refreshAdminSpawnList();
+  }
+
   function initAdminSpawn() {
     adminSpawnOreTypes = Object.keys(ORE_TYPES).sort((a, b) => ORE_TYPES[b].value - ORE_TYPES[a].value);
     refreshAdminSpawnList();
     adminSpawnSearch.addEventListener('input', refreshAdminSpawnList);
+    adminSpawnQualityRow.addEventListener('click', (e) => {
+      const button = e.target.closest('button[data-quality]');
+      if (!button) return;
+      setAdminSpawnQuality(button.dataset.quality);
+    });
     adminSpawnList.addEventListener('click', (e) => {
       const button = e.target.closest('button[data-ore]');
       if (!button) return;
@@ -4245,9 +4307,11 @@
     const query = adminSpawnSearch.value.trim().toLowerCase();
     const visible = adminSpawnOreTypes.filter(type => {
       const ore = ORE_TYPES[type];
+      if (adminSpawnQuality !== 'all' && ore.quality !== adminSpawnQuality) return false;
       return ore.name.toLowerCase().includes(query) || type.toLowerCase().includes(query);
     });
-    adminSpawnCount.textContent = `${visible.length} ores shown`;
+    const qualityLabel = adminSpawnQuality === 'all' ? 'all qualities' : adminSpawnQuality;
+    adminSpawnCount.textContent = `${visible.length} ores shown (${qualityLabel})`;
     adminSpawnList.innerHTML = visible.map(type => {
       const ore = ORE_TYPES[type];
       return `
@@ -4268,9 +4332,34 @@
     adminSpawnOverlay.classList.remove('show');
   }
 
+  async function grantAdminOre(target, type) {
+    if (!auth.isAdmin || !auth.token || !adminPin) return;
+    adminSpawnInfo.textContent = 'sending grant request...';
+    try {
+      const r = await fetch('/api/admin/grant_ore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: auth.token, pin: adminPin, target, oreType: type }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) {
+        adminSpawnInfo.textContent = `granted ${ORE_TYPES[type].name} to ${target}`;
+      } else {
+        adminSpawnInfo.textContent = data.error ? `error: ${data.error}` : 'grant failed';
+      }
+    } catch (e) {
+      adminSpawnInfo.textContent = 'network error';
+    }
+  }
+
   function spawnAdminOre(type) {
     if (!auth.isAdmin || game.scene !== 'admin') return;
     if (!ORE_TYPES[type]) return;
+    const target = adminSpawnTarget.value.trim();
+    if (target) {
+      grantAdminOre(target, type);
+      return;
+    }
     game.carried.push(type);
     adminSpawnInfo.textContent = `spawned ${ORE_TYPES[type].name} into inventory` +
       (game.carried.length > game.carriedMax ? ' (overflow allowed)' : '');

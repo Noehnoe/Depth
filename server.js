@@ -228,6 +228,32 @@ app.post('/api/admin/kick', (req, res) => {
   res.json({ ok: true, kicked });
 });
 
+app.post('/api/admin/grant_ore', (req, res) => {
+  const { token, pin, target, oreType } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
+  if (!target || !String(target).trim()) return res.status(400).json({ error: 'target required' });
+  if (!oreType || typeof oreType !== 'string' || ORE_VALUES[oreType] === undefined) {
+    return res.status(400).json({ error: 'invalid_ore' });
+  }
+  const normalized = String(target).trim().toLowerCase();
+  const sid = Object.keys(gameState.players).find((id) => {
+    const p = gameState.players[id];
+    return p && p.name && p.name.toLowerCase() === normalized;
+  });
+  if (!sid) return res.status(404).json({ error: 'target_offline' });
+  const p = gameState.players[sid];
+  if (!Array.isArray(p.carrying)) p.carrying = [];
+  p.carrying.push(oreType);
+  const sock = io.sockets.sockets.get(sid);
+  if (sock) {
+    sock.emit('admin_granted_ore', { oreType, target: p.name, by: r.user.username });
+  }
+  broadcastState();
+  console.log(`[admin] ${r.user.username} granted ${oreType} to ${p.name}`);
+  res.json({ ok: true });
+});
+
 app.post('/api/logout', (req, res) => {
   const { token } = req.body || {};
   if (token) {
