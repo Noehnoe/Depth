@@ -2084,28 +2084,29 @@
       blink: p.blink,
     });
 
-    // helmet light cone — multiply blend over everything for darkness
-    if (game.depth > 30) {
-      const darkness = Math.min(0.78, 0.2 + game.depth / 1400 * 0.7);
+    // helmet light cone — keeps visibility high so you can always see the cave
+    if (game.depth > 100) {
+      // softer cap so it never gets pitch-black; barely darkens at all in early game
+      const darkness = Math.min(0.35, 0.05 + game.depth / 4000 * 0.30);
       ctx.fillStyle = `rgba(0,0,0,${darkness})`;
       ctx.fillRect(0, 0, W, H);
-      // cut out light area
+      // cut out a generous light area around the player
       ctx.save();
       ctx.globalCompositeOperation = 'destination-out';
       const lampX = p.x + p.w / 2 + (p.facing > 0 ? 2 : -2);
       const lampY = PLAYER_SHAFT_Y + 6;
-      const grd = ctx.createRadialGradient(lampX, lampY, 10, lampX, lampY, 100);
-      grd.addColorStop(0, 'rgba(255,255,255,0.95)');
-      grd.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+      const grd = ctx.createRadialGradient(lampX, lampY, 40, lampX, lampY, 240);
+      grd.addColorStop(0, 'rgba(255,255,255,1)');
+      grd.addColorStop(0.6, 'rgba(255,255,255,0.85)');
       grd.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = grd;
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
-      // warm overlay where the lamp shines
+      // warm overlay where the lamp shines (mild)
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const grd2 = ctx.createRadialGradient(lampX, lampY, 5, lampX, lampY, 90);
-      grd2.addColorStop(0, 'rgba(255,220,140,0.25)');
+      const grd2 = ctx.createRadialGradient(lampX, lampY, 10, lampX, lampY, 160);
+      grd2.addColorStop(0, 'rgba(255,220,140,0.18)');
       grd2.addColorStop(1, 'rgba(255,200,100,0)');
       ctx.fillStyle = grd2;
       ctx.fillRect(0, 0, W, H);
@@ -3607,17 +3608,28 @@
   // depth bar on the right edge — log scale so deep tiers stay visible
   function drawDepthBar() {
     if (game.scene !== 'surface' && game.scene !== 'shaft') return;
-    const MAX_D = 80000;
     const barX = W - 22, barY = 74, barW = 14, barH = H - 156;
+    const N = TIER_ORDER.length;
+    // Tier-based mapping: each tier gets equal vertical space on the bar, regardless
+    // of the absolute depth values. Gives an even spread across all 25 tiers instead
+    // of crushing the late tiers into the bottom.
     const dToY = (d) => {
       if (d <= 0) return barY;
-      const t = Math.log(d + 1) / Math.log(MAX_D + 1);
+      // find current tier index
+      let i = 0;
+      for (let k = N - 1; k >= 0; k--) {
+        if (d >= TIER_ORDER[k].minDepth) { i = k; break; }
+      }
+      const lower = TIER_ORDER[i].minDepth;
+      const upper = (i + 1 < N) ? TIER_ORDER[i + 1].minDepth : Math.max(lower * 1.3, lower + 1000);
+      const frac = Math.min(1, (d - lower) / Math.max(1, upper - lower));
+      const t = (i + frac) / N;
       return barY + Math.min(1, t) * barH;
     };
     // bg panel
     panel(barX - 4, barY - 16, barW + 8, barH + 32);
     pixelText('DEPTH', barX + barW / 2, barY - 13, 9, '#fff', 'center');
-    // gradient inside (surface = brown, deep = black)
+    // gradient inside
     for (let i = 0; i < barH; i++) {
       const t = i / barH;
       const r = Math.round(58 * (1 - t));
@@ -3626,14 +3638,18 @@
       ctx.fillStyle = `rgb(${r},${g},${b})`;
       ctx.fillRect(barX, barY + i, barW, 1);
     }
-    // markers for milestone depths
-    const marks = [200, 1400, 5400, 11900, 29000, 72000];
-    for (const m of marks) {
+    // tier markers — show every-other tier boundary so labels don't overlap, plus first/last
+    const labelEvery = N > 12 ? 3 : 2;
+    for (let i = 0; i < N; i++) {
+      const m = TIER_ORDER[i].minDepth;
+      if (m <= 0) continue;
       const my = dToY(m);
       ctx.fillStyle = '#5a3a22';
       ctx.fillRect(barX - 3, my, barW + 6, 1);
-      pixelText(m >= 1000 ? (m / 1000).toFixed(1) + 'k' : String(m),
-                barX - 6, my - 5, 7, '#aaa', 'right');
+      if (i % labelEvery === 0 || i === N - 1) {
+        const label = m >= 1000 ? (m / 1000).toFixed(m >= 10000 ? 0 : 1) + 'k' : String(m);
+        pixelText(label, barX - 6, my - 5, 7, '#aaa', 'right');
+      }
     }
     // remote players
     for (const sid in net.remotePlayers) {
@@ -3645,7 +3661,7 @@
       ctx.fillStyle = pal.helmet;
       ctx.fillRect(barX - 1, ry - 1, barW + 2, 3);
     }
-    // own marker (always shown — surface = top)
+    // own marker
     const myD = game.scene === 'shaft' ? game.depth : 0;
     const myY = dToY(myD);
     ctx.fillStyle = '#fff';
