@@ -14,8 +14,9 @@ const io = new Server(server, {
 });
 
 app.use(express.json({ limit: '8kb' }));
-// Bare root redirects to the game (so http://depth.up.railway.app → /depth.html).
-app.get('/', (req, res) => res.redirect(302, '/depth.html'));
+// Serve the game directly at the bare root so the URL is just the domain
+// (no /depth.html suffix). /depth.html still works for anyone who has it bookmarked.
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'depth.html')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- USERS / AUTH ----------
