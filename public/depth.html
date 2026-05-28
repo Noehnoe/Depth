@@ -834,6 +834,11 @@
       chatMessages.push({ from: msg.from || '?', text: msg.text, ts: msg.ts || Date.now() });
       while (chatMessages.length > CHAT_KEEP) chatMessages.shift();
     });
+    net.sock.on('session_replaced', () => {
+      try { localStorage.removeItem('depthAuth'); } catch (e) {}
+      try { alert('Your account was opened in another tab — this session has ended.'); } catch (e) {}
+      setTimeout(() => location.reload(), 50);
+    });
     net.sock.on('force_reload', (info) => {
       try {
         alert('Server restart triggered' + (info && info.by ? ' by ' + info.by : '') + ' — reloading.');

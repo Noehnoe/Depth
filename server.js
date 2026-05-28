@@ -112,8 +112,17 @@ app.post('/api/login', (req, res) => {
   const hash = hashPassword(password, u.salt);
   if (hash !== u.hash) return res.status(401).json({ error: 'invalid username or password' });
   const token = makeToken();
-  u.sessions = (u.sessions || []).filter(s => s.expiresAt > Date.now());
-  u.sessions.push({ token, expiresAt: Date.now() + SESSION_TTL_MS });
+  // Single-session enforcement: a fresh login invalidates ALL previous tokens
+  // for this account. Any other tab using an old token can no longer act.
+  u.sessions = [{ token, expiresAt: Date.now() + SESSION_TTL_MS }];
+  // Also kick any live socket currently logged in as this user
+  io.sockets.sockets.forEach((sock) => {
+    if (sock.data && sock.data.username && sock.data.username.toLowerCase() === key) {
+      sock.emit('session_replaced');
+      sock.disconnect(true);
+      delete gameState.players[sock.id];
+    }
+  });
   saveUsers();
   console.log(`[login] ${u.username}`);
   res.json({ token, username: u.username, isAdmin: isAdminUser(u) });
@@ -416,6 +425,18 @@ io.on('connection', (socket) => {
     }
     socket.data = socket.data || {};
     socket.data.username = name;
+    // Single-session: kick any other live socket using this same username.
+    // The new arrival wins; the old tab is told it was replaced and disconnected.
+    if (name) {
+      io.sockets.sockets.forEach((other) => {
+        if (other.id === socket.id) return;
+        if (other.data && other.data.username && other.data.username.toLowerCase() === name.toLowerCase()) {
+          other.emit('session_replaced');
+          other.disconnect(true);
+          delete gameState.players[other.id];
+        }
+      });
+    }
     const myData = gameDataFor(socket);
     gameState.players[socket.id] = {
       x: SPAWN.x,
