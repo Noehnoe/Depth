@@ -359,6 +359,15 @@
   // ---------- INPUT ----------
   const keys = {};
   const justPressed = {};
+  // Clear all held keys. Called when an overlay grabs/releases focus or the tab
+  // loses focus — without this, holding W then opening chat leaves W "stuck"
+  // because the input swallows the keyup and the player keeps ascending forever.
+  function clearAllKeys() {
+    for (const k in keys) keys[k] = false;
+  }
+  // Tab away / alt-tab: assume nothing is held when focus returns.
+  window.addEventListener('blur', clearAllKeys);
+
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     // If a text input is focused (chat, login, admin pin), let the input handle keys
@@ -519,11 +528,13 @@
   tabRegister.addEventListener('click', () => setAuthMode('register'));
 
   function showLogin() {
+    if (typeof clearAllKeys === 'function') clearAllKeys();
     loginOverlay.classList.add('show');
     setTimeout(() => userInput.focus(), 30);
   }
   function hideLogin() {
     loginOverlay.classList.remove('show');
+    if (typeof clearAllKeys === 'function') clearAllKeys();
   }
 
   async function postJson(url, body) {
@@ -3240,6 +3251,7 @@
   function chatOpen() {
     if (!auth.username) return; // only logged in users
     if (game.scene === 'login' || game.scene === 'boot') return;
+    clearAllKeys();
     chatOverlay.classList.add('show');
     setTimeout(() => chatInput.focus(), 20);
   }
@@ -3247,6 +3259,7 @@
     chatOverlay.classList.remove('show');
     chatInput.value = '';
     chatInput.blur();
+    clearAllKeys();
   }
   function chatSend() {
     const t = chatInput.value.trim();
@@ -3306,11 +3319,13 @@
     if (!auth.isAdmin || !auth.token) return;
     adminPinErr.textContent = '';
     adminPinInput.value = '';
+    clearAllKeys();
     adminPinOverlay.classList.add('show');
     setTimeout(() => adminPinInput.focus(), 30);
   }
   function closeAdminPin() {
     adminPinOverlay.classList.remove('show');
+    clearAllKeys();
   }
   async function submitAdminPin() {
     const pin = adminPinInput.value.trim();
