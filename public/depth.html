@@ -1385,6 +1385,7 @@
     game.oxygen = game.oxygenMax;
     game.hp = game.maxHp;
     game.suffocating = false;
+    game.lastShaftTickTime = performance.now();
     game.lastClusterDepth = 0;
     game.oreClusters = [];
     game.particles = [];
@@ -1446,15 +1447,25 @@
     if (game.depth < 0) { game.depth = 0; exitShaftToSurface(); return; }
     if (game.depth > game.maxDepth) game.maxDepth = game.depth;
 
+    // Use REAL wall-clock time for oxygen/HP drain so a stalled-then-burst tick
+    // pattern (browser GC, JS thread blocked, etc.) can't suddenly drop 50% O2.
+    // dt-based drain has been the bug: when ticks queue up, each tick still
+    // decrements by a fixed amount, multiplying the loss.
+    const _now = performance.now();
+    if (!game.lastShaftTickTime) game.lastShaftTickTime = _now;
+    let realDt = (_now - game.lastShaftTickTime) / 1000;
+    game.lastShaftTickTime = _now;
+    if (realDt < 0) realDt = 0;
+    if (realDt > 0.5) realDt = 0.5; // cap any single stutter to 0.5s worth of drain
+
     if (game.oxygen > 0) {
-      game.oxygen -= 2 * dt; // halved (was 4) — idle play in the cave is now manageable
+      game.oxygen -= 4 * realDt;
       game.suffocating = false;
     }
     if (game.oxygen <= 0) {
       game.oxygen = 0;
       game.suffocating = true;
-      // suffocating: 20 dmg/s for 5s = 100 dmg total → die
-      game.hp -= 20 * dt;
+      game.hp -= 20 * realDt;
       if (game.hp <= 0) {
         game.hp = 0;
         die();
@@ -3770,6 +3781,8 @@
       clearAllKeys();
     } else {
       lastVisibleAt = performance.now();
+      // resync drain clock so the time we were hidden isn't suddenly applied
+      game.lastShaftTickTime = performance.now();
       clearAllKeys();
     }
   });
