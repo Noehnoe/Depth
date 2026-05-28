@@ -3236,6 +3236,72 @@
     showCollectToast(`Converted: 1x ${ORE_TYPES[result].name} (${fmtShort(ORE_TYPES[result].value)}/s)`);
   }
 
+  // Upgrades every ore you own to the highest quality possible.
+  // For each base type: 2 normal -> 1 gold, 2 gold -> 1 diamond, 3 diamond -> 1 rainbow.
+  // Existing higher-quality ores are added to the pool before each step, so leftover
+  // normals can combine with existing golds, etc.
+  function machineConvertAll() {
+    // Tally everything by base type + quality
+    const counts = {};
+    function tally(type) {
+      const ot = ORE_TYPES[type];
+      if (!ot) return;
+      counts[ot.baseType] = counts[ot.baseType] || { normal: 0, gold: 0, diamond: 0, rainbow: 0 };
+      counts[ot.baseType][ot.quality]++;
+    }
+    for (const t of game.carried) tally(t);
+    for (const t of game.placed) if (t) tally(t);
+
+    if (Object.keys(counts).length === 0) {
+      showCollectToast('Convert All: you have no ores');
+      return;
+    }
+    if (!confirm('Convert ALL your ores up the chain to the highest quality possible?\n\nUses everything in your hotbar AND your trove.')) return;
+
+    let goldMade = 0, diamondMade = 0, rainbowMade = 0;
+    const newOres = [];
+    for (const base in counts) {
+      let { normal, gold, diamond, rainbow } = counts[base];
+      // normal -> gold
+      const ngs = Math.floor(normal / 2);
+      gold += ngs; goldMade += ngs;
+      normal = normal % 2;
+      // gold -> diamond
+      const nds = Math.floor(gold / 2);
+      diamond += nds; diamondMade += nds;
+      gold = gold % 2;
+      // diamond -> rainbow
+      const nrs = Math.floor(diamond / 3);
+      rainbow += nrs; rainbowMade += nrs;
+      diamond = diamond % 3;
+      // emit remaining ores
+      for (let i = 0; i < normal;  i++) newOres.push(base);
+      for (let i = 0; i < gold;    i++) newOres.push('g_' + base);
+      for (let i = 0; i < diamond; i++) newOres.push('d_' + base);
+      for (let i = 0; i < rainbow; i++) newOres.push('r_' + base);
+    }
+
+    // Rebuild inventory: highest-value ores fill placed first (max passive income),
+    // rest go in carried. Conversion always shrinks total, so overflow is rare.
+    newOres.sort((a, b) => ORE_TYPES[b].value - ORE_TYPES[a].value);
+    const cap = placedSlotCount();
+    game.placed = new Array(cap).fill(null);
+    for (let i = 0; i < Math.min(cap, newOres.length); i++) game.placed[i] = newOres[i];
+    const leftover = newOres.slice(cap);
+    game.carried = leftover.slice(0, Math.max(game.carriedMax, leftover.length));
+
+    sendPlacedSync();
+    game.machine.input = [];
+    game.machine.source = [];
+
+    const parts = [];
+    if (rainbowMade > 0) parts.push(`${rainbowMade}x rainbow`);
+    if (diamondMade > 0) parts.push(`${diamondMade}x diamond`);
+    if (goldMade > 0) parts.push(`${goldMade}x gold`);
+    showCollectToast(parts.length > 0 ? `Convert All: made ${parts.join(', ')}` : 'Convert All: nothing could combine');
+  }
+
+
   function drawMachineScreen() {
     // dark industrial background
     ctx.fillStyle = '#181820';
@@ -3482,7 +3548,10 @@
     drawCoin(W - 192, H - 38, 12);
     pixelText('$' + fmtShort(game.money), W - 172, H - 40, 13, '#fff');
 
-    // leave button
+    // CONVERT ALL — bottom-left, prominent
+    if (button(20, H - 50, 220, 36, 'CONVERT ALL')) machineConvertAll();
+
+    // leave button (centered)
     if (button(W / 2 - 80, H - 50, 160, 36, 'LEAVE [B]')) closeMachine();
     if (input('b')) closeMachine();
   }
