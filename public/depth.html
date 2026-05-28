@@ -1757,8 +1757,6 @@
 
     // Use REAL wall-clock time for oxygen/HP drain so a stalled-then-burst tick
     // pattern (browser GC, JS thread blocked, etc.) can't suddenly drop 50% O2.
-    // dt-based drain has been the bug: when ticks queue up, each tick still
-    // decrements by a fixed amount, multiplying the loss.
     const _now = performance.now();
     if (!game.lastShaftTickTime) game.lastShaftTickTime = _now;
     let realDt = (_now - game.lastShaftTickTime) / 1000;
@@ -1766,18 +1764,26 @@
     if (realDt < 0) realDt = 0;
     if (realDt > 0.5) realDt = 0.5; // cap any single stutter to 0.5s worth of drain
 
-    if (game.oxygen > 0) {
-      game.oxygen -= 4 * realDt;
-      game.suffocating = false;
-    }
-    if (game.oxygen <= 0) {
-      game.oxygen = 0;
-      game.suffocating = true;
-      game.hp -= 20 * realDt;
-      if (game.hp <= 0) {
-        game.hp = 0;
-        die();
-        return;
+    // Pause oxygen and HP drain while disconnected from the server. Otherwise
+    // a server restart or brief network drop would suffocate every player at
+    // once (their local game keeps running but their state isn't saved/synced).
+    if (!net.connected) {
+      // also reset the tick clock so reconnect doesn't apply backlogged time
+      game.lastShaftTickTime = _now;
+    } else {
+      if (game.oxygen > 0) {
+        game.oxygen -= 4 * realDt;
+        game.suffocating = false;
+      }
+      if (game.oxygen <= 0) {
+        game.oxygen = 0;
+        game.suffocating = true;
+        game.hp -= 20 * realDt;
+        if (game.hp <= 0) {
+          game.hp = 0;
+          die();
+          return;
+        }
       }
     }
 

@@ -14,6 +14,8 @@ const io = new Server(server, {
 });
 
 app.use(express.json({ limit: '8kb' }));
+// Bare root redirects to the game (so http://depth.up.railway.app → /depth.html).
+app.get('/', (req, res) => res.redirect(302, '/depth.html'));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- USERS / AUTH ----------
