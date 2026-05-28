@@ -1015,8 +1015,11 @@
     for (const [div, suf] of units) {
       if (abs >= div) {
         const v = n / div;
-        const fmt = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
-        return fmt.replace(/\.?0+$/, '') + suf;
+        let fmt = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+        // Strip ONLY trailing zeros after a decimal point, then any orphan trailing '.'.
+        // Earlier this regex stripped trailing zeros from integers too (so "290" -> "29").
+        fmt = fmt.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+        return fmt + suf;
       }
     }
     return String(Math.floor(n));
