@@ -9,8 +9,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*' },
-  pingTimeout: 4000,
-  pingInterval: 2000,
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
 app.use(express.json({ limit: '8kb' }));

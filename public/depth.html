@@ -999,7 +999,14 @@
   function initNetwork() {
     if (typeof io === 'undefined') return; // single-player fallback
     try {
-      net.sock = io();
+      net.sock = io({
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+      });
     } catch (e) {
       return;
     }
@@ -1008,6 +1015,18 @@
       net.connected = true;
       net.sock.emit('player_join', { token: auth.token, username: auth.username });
       refreshPlayerOrder();
+    });
+    net.sock.on('connect_error', (err) => {
+      console.warn('[socket] connect_error', err);
+    });
+    net.sock.on('reconnect_attempt', (attempt) => {
+      console.warn('[socket] reconnect_attempt', attempt);
+    });
+    net.sock.on('reconnect', (attempt) => {
+      console.log('[socket] reconnect', attempt);
+    });
+    net.sock.on('reconnect_failed', () => {
+      console.warn('[socket] reconnect_failed');
     });
     net.sock.on('disconnect', () => {
       net.connected = false;
