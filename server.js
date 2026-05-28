@@ -310,7 +310,7 @@ const BASE_ORE_VALUES = {
 };
 
 // Build ORE_VALUES including all quality variants (gold 1.25x, diamond 2x, rainbow 5x).
-const QUALITY_MULTS = { '': 1, 'g_': 1.25, 'd_': 2, 'r_': 5 };
+const QUALITY_MULTS = { '': 1, 'g_': 1.25, 'd_': 2, 'r_': 10 };
 const ORE_VALUES = {};
 for (const base in BASE_ORE_VALUES) {
   for (const prefix in QUALITY_MULTS) {

@@ -427,6 +427,11 @@
     mouse.down = true; mouse.clicked = true;
     mouse.downX = mouse.x; mouse.downY = mouse.y;
     mouse.dragDistance = 0;
+    // If the machine's search input is focused, tapping the canvas should
+    // dismiss the on-screen keyboard so bottom buttons (LEAVE) are reachable.
+    if (machineSearchInput && document.activeElement === machineSearchInput) {
+      machineSearchInput.blur();
+    }
   });
   canvas.addEventListener('mouseup', e => {
     mouse.down = false;
@@ -463,6 +468,10 @@
   canvas.addEventListener('touchstart', e => {
     e.preventDefault();
     touch.mode = true;
+    // Dismiss the mobile keyboard if the machine search was focused.
+    if (machineSearchInput && document.activeElement === machineSearchInput) {
+      machineSearchInput.blur();
+    }
     for (const t of e.changedTouches) {
       const pos = touchPos(t);
       const btn = touchButtonAt(pos.x, pos.y);
@@ -715,7 +724,7 @@
     { prefix: '',  mult: 1,    glow: null,        nameSuffix: '' },
     { prefix: 'g_', mult: 1.25, glow: '#fff080',  nameSuffix: ' [G]' },   // gold variant
     { prefix: 'd_', mult: 2,    glow: '#80f8ff',  nameSuffix: ' [D]' },   // diamond variant
-    { prefix: 'r_', mult: 5,    glow: '#ff80ff',  nameSuffix: ' [R]' },   // rainbow variant
+    { prefix: 'r_', mult: 10,   glow: '#ff80ff',  nameSuffix: ' [R]' },   // rainbow variant (10x base)
   ];
   // Build ORE_TYPES (base + all quality variants).
   const ORE_TYPES = {};
@@ -3329,7 +3338,7 @@
     pixelText('combine identical ores to upgrade them', W / 2, 42, 11, C.textDim, 'center');
 
     // Recipes reminder
-    pixelText('2x normal -> 1x GOLD (1.25x)    2x GOLD -> 1x DIAMOND (2x)    3x DIAMOND -> 1x RAINBOW (5x)',
+    pixelText('2x normal -> 1x GOLD (1.25x)    2x GOLD -> 1x DIAMOND (2x)    3x DIAMOND -> 1x RAINBOW (10x)',
       W / 2, 60, 10, '#aac8ff', 'center');
 
     // INPUT slots (3)
@@ -3554,6 +3563,25 @@
     // leave button (centered)
     if (button(W / 2 - 80, H - 50, 160, 36, 'LEAVE [B]')) closeMachine();
     if (input('b')) closeMachine();
+
+    // Top-right ✕ close — always visible even when the mobile keyboard
+    // is covering the bottom of the screen. Tapping it both blurs the search
+    // input (dismissing the keyboard) and closes the machine.
+    const closeX = W - 44, closeY = 10, closeS = 32;
+    ctx.fillStyle = 'rgba(60,10,10,0.85)';
+    ctx.fillRect(closeX, closeY, closeS, closeS);
+    ctx.fillStyle = '#ff4040';
+    ctx.fillRect(closeX, closeY, closeS, 2);
+    ctx.fillRect(closeX, closeY + closeS - 2, closeS, 2);
+    ctx.fillRect(closeX, closeY, 2, closeS);
+    ctx.fillRect(closeX + closeS - 2, closeY, 2, closeS);
+    pixelText('x', closeX + closeS / 2, closeY + 6, 20, '#ff8080', 'center');
+    const closeHov = mouse.x >= closeX && mouse.x <= closeX + closeS &&
+                     mouse.y >= closeY && mouse.y <= closeY + closeS;
+    if (closeHov && mouse.clicked) {
+      machineSearchInput.blur();
+      closeMachine();
+    }
   }
 
   function drawShopScreen() {
@@ -3959,7 +3987,11 @@
   const machineSearchInput = document.getElementById('machineSearch');
   machineSearchInput.addEventListener('keydown', (e) => {
     e.stopPropagation();
-    if (e.key === 'Escape') { machineSearchInput.value = ''; if (game.machine) game.machine.search = ''; }
+    if (e.key === 'Escape') {
+      machineSearchInput.value = '';
+      if (game.machine) game.machine.search = '';
+      machineSearchInput.blur(); // dismiss keyboard on mobile
+    }
   });
   machineSearchInput.addEventListener('keyup', (e) => { e.stopPropagation(); });
   machineSearchInput.addEventListener('input', () => {
