@@ -2084,29 +2084,24 @@
       blink: p.blink,
     });
 
-    // helmet light cone — keeps visibility high so you can always see the cave
+    // Soft vignette darkness, transparent right around the player so they and the
+    // nearby ores are NEVER hidden. The gradient only adds darkness as you go
+    // outward — it doesn't punch holes or cover the lamp area.
     if (game.depth > 100) {
-      // softer cap so it never gets pitch-black; barely darkens at all in early game
-      const darkness = Math.min(0.35, 0.05 + game.depth / 4000 * 0.30);
-      ctx.fillStyle = `rgba(0,0,0,${darkness})`;
-      ctx.fillRect(0, 0, W, H);
-      // cut out a generous light area around the player
-      ctx.save();
-      ctx.globalCompositeOperation = 'destination-out';
+      const darkness = Math.min(0.55, 0.05 + game.depth / 4000 * 0.45);
       const lampX = p.x + p.w / 2 + (p.facing > 0 ? 2 : -2);
       const lampY = PLAYER_SHAFT_Y + 6;
-      const grd = ctx.createRadialGradient(lampX, lampY, 40, lampX, lampY, 240);
-      grd.addColorStop(0, 'rgba(255,255,255,1)');
-      grd.addColorStop(0.6, 'rgba(255,255,255,0.85)');
-      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      const grd = ctx.createRadialGradient(lampX, lampY, 90, lampX, lampY, 360);
+      grd.addColorStop(0, 'rgba(0,0,0,0)');
+      grd.addColorStop(0.4, `rgba(0,0,0,${darkness * 0.35})`);
+      grd.addColorStop(1, `rgba(0,0,0,${darkness})`);
       ctx.fillStyle = grd;
       ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-      // warm overlay where the lamp shines (mild)
+      // warm glow around the lamp itself — purely additive
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const grd2 = ctx.createRadialGradient(lampX, lampY, 10, lampX, lampY, 160);
-      grd2.addColorStop(0, 'rgba(255,220,140,0.18)');
+      const grd2 = ctx.createRadialGradient(lampX, lampY, 8, lampX, lampY, 110);
+      grd2.addColorStop(0, 'rgba(255,220,140,0.22)');
       grd2.addColorStop(1, 'rgba(255,200,100,0)');
       ctx.fillStyle = grd2;
       ctx.fillRect(0, 0, W, H);
