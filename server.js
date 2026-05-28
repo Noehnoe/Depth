@@ -174,6 +174,48 @@ app.post('/api/admin/stats', (req, res) => {
   });
 });
 
+app.post('/api/admin/online_players', (req, res) => {
+  const { token, pin } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
+  const players = [];
+  for (const sid in gameState.players) {
+    const p = gameState.players[sid];
+    players.push({
+      sid,
+      name: p.name || 'anon',
+      depth: Math.floor(p.depth || 0),
+      alive: p.alive !== false,
+    });
+  }
+  players.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  res.json({ players });
+});
+
+// Server-only kick. The client doesn't need to listen for anything — we just
+// disconnect their socket and they vanish from gameState. Their tab will see
+// the disconnect through socket.io's standard mechanism.
+app.post('/api/admin/kick', (req, res) => {
+  const { token, pin, target } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
+  if (!target) return res.status(400).json({ error: 'target required' });
+  let kicked = 0;
+  io.sockets.sockets.forEach((sock, sid) => {
+    const matchesSid = sid === target;
+    const sockName = sock.data && sock.data.username;
+    const matchesName = sockName && sockName.toLowerCase() === String(target).toLowerCase();
+    if (matchesSid || matchesName) {
+      sock.disconnect(true);
+      delete gameState.players[sid];
+      kicked++;
+    }
+  });
+  console.log(`[admin] ${r.user.username} kicked "${target}" (${kicked} socket(s))`);
+  if (kicked > 0) broadcastState();
+  res.json({ ok: true, kicked });
+});
+
 app.post('/api/logout', (req, res) => {
   const { token } = req.body || {};
   if (token) {

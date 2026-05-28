@@ -3297,6 +3297,8 @@
   const adminPinErr = document.getElementById('adminPinErr');
   let adminPin = null; // held in memory only, never persisted
   let adminStats = null;
+  let adminPlayers = []; // [{ sid, name, depth, alive }]
+  let adminRefreshAcc = 0;
 
   function openAdminPin() {
     if (!auth.isAdmin || !auth.token) return;
@@ -3322,7 +3324,9 @@
         adminPin = pin;
         closeAdminPin();
         game.scene = 'admin';
+        adminRefreshAcc = 0;
         refreshAdminStats();
+        refreshAdminPlayers();
       } else {
         const data = await r.json().catch(() => ({}));
         adminPinErr.textContent = data.error === 'wrong_pin' ? 'wrong pin'
@@ -3360,6 +3364,35 @@
     } catch (e) {}
   }
 
+  async function refreshAdminPlayers() {
+    if (!adminPin) return;
+    try {
+      const r = await fetch('/api/admin/online_players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: auth.token, pin: adminPin }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        adminPlayers = Array.isArray(data.players) ? data.players : [];
+      }
+    } catch (e) {}
+  }
+
+  async function kickPlayer(target) {
+    if (!adminPin || !target) return;
+    if (!confirm(`Kick ${target}? Their tab will be disconnected.`)) return;
+    try {
+      await fetch('/api/admin/kick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: auth.token, pin: adminPin, target }),
+      });
+      await refreshAdminPlayers();
+      await refreshAdminStats();
+    } catch (e) { console.error(e); }
+  }
+
   async function adminForceReload() {
     if (!auth.isAdmin || !auth.token || !adminPin) return;
     if (!confirm('Force ALL players to reload? This kicks everyone back to the login.')) return;
@@ -3375,49 +3408,79 @@
   function leaveAdmin() {
     adminPin = null; // forget on leave; require re-entry next time
     adminStats = null;
+    adminPlayers = [];
     game.scene = 'menu';
   }
 
   function drawAdmin() {
-    // dark warning-themed background
+    // auto-refresh every 3s while in the panel
+    adminRefreshAcc += 1 / 20;
+    if (adminRefreshAcc >= 3) {
+      adminRefreshAcc = 0;
+      refreshAdminStats();
+      refreshAdminPlayers();
+    }
+
     ctx.fillStyle = '#100408';
     ctx.fillRect(0, 0, W, H);
-    // scanline grid
     ctx.fillStyle = 'rgba(255,40,40,0.04)';
     for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
-    // top bar
     ctx.fillStyle = '#3a0a0a';
-    ctx.fillRect(0, 0, W, 60);
+    ctx.fillRect(0, 0, W, 56);
     ctx.fillStyle = '#ff4040';
-    ctx.fillRect(0, 58, W, 2);
-    pixelText('⚠  ADMIN PANEL  ⚠', W / 2, 18, 28, '#ff8080', 'center');
-    pixelText(`signed in as ${auth.username}`, W / 2, 48, 11, '#aa8080', 'center');
+    ctx.fillRect(0, 54, W, 2);
+    pixelText('⚠  ADMIN PANEL  ⚠', W / 2, 14, 24, '#ff8080', 'center');
+    pixelText(`signed in as ${auth.username}`, W / 2, 42, 11, '#aa8080', 'center');
 
-    // stats
-    panel(40, 90, W - 80, 110, '#1a0810', '#ff4040', '#7a1010');
-    pixelText('SERVER STATS', 60, 100, 14, '#ff8080');
+    // stats (compact, one row)
+    panel(40, 70, W - 80, 60, '#1a0810', '#ff4040', '#7a1010');
     const online = adminStats ? adminStats.online : '?';
     const accts = adminStats ? adminStats.accounts : '?';
     const socks = adminStats ? adminStats.activeSockets : '?';
-    pixelText('online players: ' + online, 60, 124, 13, '#fff');
-    pixelText('total accounts: ' + accts, 60, 144, 13, '#fff');
-    pixelText('active sockets: ' + socks, 60, 164, 13, '#fff');
-    if (button(W - 180, 130, 130, 28, 'REFRESH')) refreshAdminStats();
+    pixelText(`ONLINE ${online}`, 60, 84, 14, '#ff8080');
+    pixelText(`ACCOUNTS ${accts}`, 200, 84, 14, '#ff8080');
+    pixelText(`SOCKETS ${socks}`, 360, 84, 14, '#ff8080');
+    if (button(W - 130, 86, 90, 26, 'REFRESH')) {
+      refreshAdminStats();
+      refreshAdminPlayers();
+    }
 
-    // actions
-    panel(40, 220, W - 80, 200, '#1a0810', '#ff4040', '#7a1010');
-    pixelText('ACTIONS', 60, 230, 14, '#ff8080');
-    if (button(60, 254, W - 120, 44, '⚡ FORCE RELOAD ALL CLIENTS ⚡')) {
+    // online players list with kick buttons
+    panel(40, 140, W - 80, 280, '#1a0810', '#ff4040', '#7a1010');
+    pixelText('ONLINE PLAYERS', 60, 150, 13, '#ff8080');
+    const rowH = 28;
+    const maxVisibleRows = 7;
+    const visible = (adminPlayers || []).slice(0, maxVisibleRows);
+    if (visible.length === 0) {
+      pixelText('no one online (or list not loaded yet)', W / 2, 230, 12, '#aaa', 'center');
+    }
+    for (let i = 0; i < visible.length; i++) {
+      const p = visible[i];
+      const rowY = 174 + i * rowH;
+      ctx.fillStyle = '#0a0408';
+      ctx.fillRect(50, rowY, W - 100, rowH - 4);
+      pixelText(p.name, 60, rowY + 5, 13, '#fff');
+      pixelText(`${p.depth}m`, 240, rowY + 5, 12, '#aac8ff');
+      pixelText(p.alive ? 'alive' : 'dead', 320, rowY + 5, 11, p.alive ? '#7fdc7f' : '#ff8080');
+      // kick button (skip kicking yourself by socket-id, but allow by username)
+      if (button(W - 160, rowY - 2, 100, rowH, 'KICK')) {
+        kickPlayer(p.name);
+      }
+    }
+    if (adminPlayers.length > maxVisibleRows) {
+      pixelText(`... and ${adminPlayers.length - maxVisibleRows} more`, W / 2, 386, 11, '#aaa', 'center');
+    }
+
+    // force reload action
+    if (button(40, 432, W - 80, 36, '⚡ FORCE RELOAD ALL CLIENTS ⚡')) {
       adminForceReload();
     }
-    pixelText('Kicks every connected tab — they reload and re-login.', 60, 304, 11, '#aaa');
-    pixelText('Use after deploying updates or to clear stuck states.', 60, 320, 11, '#aaa');
 
     // leave
-    if (button(W / 2 - 100, H - 60, 200, 38, 'LEAVE [B]')) leaveAdmin();
+    if (button(W / 2 - 100, H - 58, 200, 34, 'LEAVE [B]')) leaveAdmin();
     if (justPressed['b']) leaveAdmin();
 
-    pixelText('PIN cleared on leave — re-entry required next time', W / 2, H - 14, 10, '#aa8080', 'center');
+    pixelText('auto-refresh every 3s · PIN cleared on leave', W / 2, H - 14, 10, '#aa8080', 'center');
   }
 
   function drawTitle() {
