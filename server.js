@@ -17,6 +17,7 @@ app.use(express.json({ limit: '8kb' }));
 // Serve the game directly at the bare root so the URL is just the domain
 // (no /depth.html suffix). /depth.html still works for anyone who has it bookmarked.
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'depth.html')));
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- USERS / AUTH ----------

@@ -2,20 +2,106 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>DEPTH</title>
+<title>DEPTH — Multiplayer Mining Game</title>
+<meta name="description" content="Depth is a free browser-based multiplayer mining game. Dig deep through 45 ore tiers, upgrade your gear, convert ores into rare quality variants, and compete on global leaderboards with friends.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1a1430">
+<!-- AdSense — replace ca-pub-XXXXXXXXXXXXXXXX with your real publisher ID -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
 <style>
   html, body {
     margin: 0;
     padding: 0;
-    background: #000;
-    height: 100%;
+    background: #06030c;
+    min-height: 100%;
     width: 100%;
+    font-family: "Courier New", monospace;
+    color: #eee;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  #siteHeader {
+    background: linear-gradient(180deg, #1a1430 0%, #06030c 100%);
+    border-bottom: 1px solid #3a1c5a;
+    padding: 8px 16px;
+    text-align: center;
+  }
+  #siteHeader h1 {
+    margin: 0;
+    color: #ffe080;
+    font-size: 22px;
+    letter-spacing: 3px;
+    text-shadow: 2px 2px 0 #1a0820;
+  }
+  #siteHeader p {
+    margin: 2px 0 0;
+    color: #aaa8c8;
+    font-size: 12px;
+  }
+  #mainStage {
+    flex: 1 0 auto;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px;
+    min-height: 0;
+  }
+  #adLeft, #adRight {
+    flex: 0 0 160px;
+    min-height: 600px;
+    background: #0a0712;
+    border: 1px solid #1a1430;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: "Courier New", monospace;
-    color: #eee;
-    overflow: hidden;
+    color: #3a2c5a;
+    font-size: 11px;
+  }
+  /* Hide side ads on narrow viewports where they'd squish the game */
+  @media (max-width: 1100px) {
+    #adLeft, #adRight { display: none; }
+  }
+  #gameWrap {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-width: 0;
+  }
+  #adBottom {
+    background: #0a0712;
+    border-top: 1px solid #1a1430;
+    min-height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3a2c5a;
+    font-size: 11px;
+  }
+  #siteFooter {
+    background: #06030c;
+    border-top: 1px solid #1a1430;
+    padding: 6px 16px;
+    text-align: center;
+    color: #6a6080;
+    font-size: 11px;
+  }
+  #siteFooter a {
+    color: #aaa8c8;
+    margin: 0 8px;
+    text-decoration: none;
+  }
+  #siteFooter a:hover { color: #ffe080; }
+  noscript {
+    color: #ff8080;
+    text-align: center;
+    display: block;
+    padding: 40px 20px;
   }
   canvas {
     background: #000;
@@ -385,7 +471,51 @@
   <div id="adminSpawnCount"></div>
   <div id="adminSpawnList"></div>
 </div>
-<canvas id="game" width="800" height="600"></canvas>
+<header id="siteHeader">
+  <h1>DEPTH</h1>
+  <p>A free multiplayer pixel-art mining game · 45 ore tiers · convert · trade · compete</p>
+</header>
+
+<noscript>
+  This game needs JavaScript to play. Please enable JavaScript in your browser and reload.
+</noscript>
+
+<main id="mainStage">
+  <aside id="adLeft" aria-label="Advertisement">
+    <!-- AdSense unit (left rail) — replace ca-pub-... and data-ad-slot with your real IDs -->
+    <ins class="adsbygoogle" style="display:inline-block;width:160px;height:600px"
+         data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+         data-ad-slot="0000000000"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+  </aside>
+
+  <div id="gameWrap">
+    <canvas id="game" width="800" height="600"></canvas>
+  </div>
+
+  <aside id="adRight" aria-label="Advertisement">
+    <ins class="adsbygoogle" style="display:inline-block;width:160px;height:600px"
+         data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+         data-ad-slot="0000000000"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+  </aside>
+</main>
+
+<div id="adBottom" aria-label="Advertisement">
+  <ins class="adsbygoogle" style="display:inline-block;width:728px;height:90px;max-width:100%"
+       data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+       data-ad-slot="0000000000"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+
+<footer id="siteFooter">
+  <p>
+    DEPTH — vanilla JavaScript &amp; HTML5 Canvas.
+    <a href="/privacy">Privacy</a> ·
+    <a href="https://github.com/Noehnoe/Depth" target="_blank" rel="noopener">Source</a>
+  </p>
+</footer>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 (() => {
@@ -395,10 +525,13 @@
   const W = 800, H = 600;
   const FONT = '"Courier New", monospace';
 
-  // fullscreen scaling: keep 4:3 internal resolution, fit to viewport
+  // Fit the canvas inside #gameWrap (which is the flex-grown middle area between
+  // header, ads and footer) preserving the 4:3 aspect ratio.
+  const gameWrap = document.getElementById('gameWrap');
   function resizeCanvas() {
-    const ww = window.innerWidth;
-    const wh = window.innerHeight;
+    const rect = gameWrap.getBoundingClientRect();
+    const ww = Math.max(320, rect.width);
+    const wh = Math.max(240, rect.height);
     const targetAspect = W / H;
     const winAspect = ww / wh;
     let dispW, dispH;
@@ -414,6 +547,9 @@
     ctx.imageSmoothingEnabled = false;
   }
   window.addEventListener('resize', resizeCanvas);
+  // also recompute after fonts/ads load (header/footer height can change)
+  setTimeout(resizeCanvas, 100);
+  setTimeout(resizeCanvas, 500);
   resizeCanvas();
 
   // ---------- COLOR PALETTE ----------
