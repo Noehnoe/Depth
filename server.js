@@ -291,21 +291,37 @@ const PLACED_SLOTS = 12;
 
 const SAVE_PATH = process.env.DATA_PATH || path.join(__dirname, 'gamedata.json');
 
-const ORE_VALUES = {
-  // 5x nerfed values + 10 new endgame tiers
+// Base ore values (no quality variants). Variants are generated below.
+const BASE_ORE_VALUES = {
   coal: 1, copper: 1, iron: 2, gold: 3, crystal: 7,
   ruby: 16, sapphire: 36, emerald: 80, topaz: 180, diamond: 400,
   obsidian: 900, mythril: 2000, plasma: 4400, voidstone: 10000, singularity: 22000,
-  // new tiers — exponential progression continues
   stardust: 48000, nebula: 106000, quasar: 233000, pulsar: 513000, antimatter: 1130000,
   darkmatter: 2500000, tachyon: 5400000, quantum: 12000000, infinity: 26000000, genesis: 58000000,
+  // 20 new deep tiers (max depth 500k)
+  ascension: 128000000, zenith: 281000000, ethereal: 619000000, omega: 1360000000,
+  chronos: 3000000000, nirvana: 6600000000, paradox: 14500000000, eclipse: 32000000000,
+  supernova: 70000000000, cosmos: 154000000000, oblivion: 339000000000, dimension: 745000000000,
+  realm: 1640000000000, divine: 3600000000000, eternal: 7900000000000, transcend: 17500000000000,
+  apex: 38500000000000, archon: 84700000000000, primordial: 186000000000000, creation: 410000000000000,
 };
 
-const TIERS = Object.entries(ORE_VALUES).map(([type, value], i) => {
+// Build ORE_VALUES including all quality variants (gold 1.25x, diamond 2x, rainbow 5x).
+const QUALITY_MULTS = { '': 1, 'g_': 1.25, 'd_': 2, 'r_': 5 };
+const ORE_VALUES = {};
+for (const base in BASE_ORE_VALUES) {
+  for (const prefix in QUALITY_MULTS) {
+    ORE_VALUES[prefix + base] = Math.ceil(BASE_ORE_VALUES[base] * QUALITY_MULTS[prefix]);
+  }
+}
+
+const TIERS = Object.entries(BASE_ORE_VALUES).map(([type, value], i) => {
   const minDepths = [0, 200, 500, 900, 1400, 2000, 2700, 3500, 4400, 5400,
                      6500, 7700, 9000, 10400, 11900, 14000, 17000, 20500, 24500, 29000,
-                     34500, 41000, 49000, 59000, 72000];
-  return { tier: i + 1, type, value, minDepth: minDepths[i], maxDepth: minDepths[i + 1] || 100000 };
+                     34500, 41000, 49000, 59000, 72000,
+                     90000, 110000, 130000, 155000, 180000, 210000, 240000, 270000, 300000, 330000,
+                     360000, 380000, 400000, 420000, 440000, 455000, 470000, 480000, 490000, 500000];
+  return { tier: i + 1, type, value, minDepth: minDepths[i], maxDepth: minDepths[i + 1] || (minDepths[i] + 20000) };
 });
 
 // Shared state — only ephemeral live data (positions, active shaft ores).

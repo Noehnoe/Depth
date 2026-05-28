@@ -628,10 +628,11 @@
 
   // ---------- GAME STATE ----------
   const SURFACE_GROUND_Y = 460;
-  const WORLD_WIDTH_BASE = 1000;
+  const WORLD_WIDTH_BASE = 1100;
   const BASE_X = 80, BASE_W = 130, BASE_H = 130;
-  const HOLE_X = 430, HOLE_W = 120;
-  const SHOP_X = 760, SHOP_W = 140, SHOP_H = 140;
+  const HOLE_X = 380, HOLE_W = 120;
+  const MACHINE_X = 620, MACHINE_W = 120, MACHINE_H = 140;
+  const SHOP_X = 820, SHOP_W = 140, SHOP_H = 140;
   const REMOTE_HOUSE_GAP = 60;
 
   // remote players each get a visual house in a row to the right of the shop
@@ -647,35 +648,80 @@
   const SHAFT_RIGHT = 520;
   const PLAYER_SHAFT_Y = 240;
 
-  const ORE_TYPES = {
-    coal:        { color: '#3a3a3a', edge: '#1a1a1a', spec: '#6a6a6a', glow: null,      value: 1,        name: 'COAL' },
-    copper:      { color: '#d06820', edge: '#7a3a10', spec: '#ff9858', glow: null,      value: 1,        name: 'COPPER' },
-    iron:        { color: '#a8b8c8', edge: '#5868a0', spec: '#e0f0ff', glow: null,      value: 2,        name: 'IRON' },
-    gold:        { color: '#f0c040', edge: '#a8801a', spec: '#fff8a0', glow: '#fff080', value: 3,        name: 'GOLD' },
-    crystal:     { color: '#40e8e8', edge: '#1090a0', spec: '#e0ffff', glow: '#80fff0', value: 7,        name: 'CRYSTAL' },
-    ruby:        { color: '#e02838', edge: '#801018', spec: '#ff90a0', glow: '#ff5060', value: 16,       name: 'RUBY' },
-    sapphire:    { color: '#3850d8', edge: '#1828a0', spec: '#a0b0ff', glow: '#5078ff', value: 36,       name: 'SAPPHIRE' },
-    emerald:     { color: '#30c850', edge: '#187030', spec: '#a0f0a0', glow: '#50e070', value: 80,       name: 'EMERALD' },
-    topaz:       { color: '#ffa030', edge: '#a85020', spec: '#ffe080', glow: '#ffc060', value: 180,      name: 'TOPAZ' },
-    diamond:     { color: '#e8f4ff', edge: '#80b0d0', spec: '#ffffff', glow: '#ffffff', value: 400,      name: 'DIAMOND' },
-    obsidian:    { color: '#202030', edge: '#080812', spec: '#5060a0', glow: '#7040c0', value: 900,      name: 'OBSIDIAN' },
-    mythril:     { color: '#90e8f0', edge: '#3088a0', spec: '#ffffff', glow: '#a0f8ff', value: 2000,     name: 'MYTHRIL' },
-    plasma:      { color: '#ff40c8', edge: '#a01880', spec: '#ffa0e8', glow: '#ff60d8', value: 4400,     name: 'PLASMA' },
-    voidstone:   { color: '#381860', edge: '#0a0418', spec: '#a060ff', glow: '#7028c8', value: 10000,    name: 'VOID' },
-    singularity: { color: '#ffffff', edge: '#8040c0', spec: '#ffffff', glow: '#d0a0ff', value: 22000,    name: 'SINGULARITY' },
-    // new ENDGAME tiers
-    stardust:    { color: '#ffffa0', edge: '#a0a040', spec: '#ffffff', glow: '#ffffa0', value: 48000,    name: 'STARDUST' },
-    nebula:      { color: '#ff80ff', edge: '#a040a0', spec: '#ffd0ff', glow: '#ff80ff', value: 106000,   name: 'NEBULA' },
-    quasar:      { color: '#80ffe8', edge: '#40a0a0', spec: '#ffffff', glow: '#80ffe8', value: 233000,   name: 'QUASAR' },
-    pulsar:      { color: '#8080ff', edge: '#4040a0', spec: '#d0d0ff', glow: '#8080ff', value: 513000,   name: 'PULSAR' },
-    antimatter:  { color: '#ff2020', edge: '#601010', spec: '#ffa040', glow: '#ff4040', value: 1130000,  name: 'ANTIMATTER' },
-    darkmatter:  { color: '#100018', edge: '#000000', spec: '#a060ff', glow: '#a060ff', value: 2500000,  name: 'DARKMATTER' },
-    tachyon:     { color: '#c0ff40', edge: '#608018', spec: '#ffffa0', glow: '#c0ff40', value: 5400000,  name: 'TACHYON' },
-    quantum:     { color: '#4080ff', edge: '#103080', spec: '#80c0ff', glow: '#80c0ff', value: 12000000, name: 'QUANTUM' },
-    infinity:    { color: '#ffffff', edge: '#a0a0c0', spec: '#ffffff', glow: '#ffe0ff', value: 26000000, name: 'INFINITY' },
-    genesis:     { color: '#ffd0a0', edge: '#a08060', spec: '#ffffff', glow: '#ffe0c0', value: 58000000, name: 'GENESIS' },
+  // Base ore data — variants (gold/diamond/rainbow) are generated below.
+  const BASE_ORES = {
+    coal:        { color: '#3a3a3a', edge: '#1a1a1a', spec: '#6a6a6a', glow: null,      value: 1,             name: 'COAL' },
+    copper:      { color: '#d06820', edge: '#7a3a10', spec: '#ff9858', glow: null,      value: 1,             name: 'COPPER' },
+    iron:        { color: '#a8b8c8', edge: '#5868a0', spec: '#e0f0ff', glow: null,      value: 2,             name: 'IRON' },
+    gold:        { color: '#f0c040', edge: '#a8801a', spec: '#fff8a0', glow: '#fff080', value: 3,             name: 'GOLD' },
+    crystal:     { color: '#40e8e8', edge: '#1090a0', spec: '#e0ffff', glow: '#80fff0', value: 7,             name: 'CRYSTAL' },
+    ruby:        { color: '#e02838', edge: '#801018', spec: '#ff90a0', glow: '#ff5060', value: 16,            name: 'RUBY' },
+    sapphire:    { color: '#3850d8', edge: '#1828a0', spec: '#a0b0ff', glow: '#5078ff', value: 36,            name: 'SAPPHIRE' },
+    emerald:     { color: '#30c850', edge: '#187030', spec: '#a0f0a0', glow: '#50e070', value: 80,            name: 'EMERALD' },
+    topaz:       { color: '#ffa030', edge: '#a85020', spec: '#ffe080', glow: '#ffc060', value: 180,           name: 'TOPAZ' },
+    diamond:     { color: '#e8f4ff', edge: '#80b0d0', spec: '#ffffff', glow: '#ffffff', value: 400,           name: 'DIAMOND' },
+    obsidian:    { color: '#202030', edge: '#080812', spec: '#5060a0', glow: '#7040c0', value: 900,           name: 'OBSIDIAN' },
+    mythril:     { color: '#90e8f0', edge: '#3088a0', spec: '#ffffff', glow: '#a0f8ff', value: 2000,          name: 'MYTHRIL' },
+    plasma:      { color: '#ff40c8', edge: '#a01880', spec: '#ffa0e8', glow: '#ff60d8', value: 4400,          name: 'PLASMA' },
+    voidstone:   { color: '#381860', edge: '#0a0418', spec: '#a060ff', glow: '#7028c8', value: 10000,         name: 'VOID' },
+    singularity: { color: '#ffffff', edge: '#8040c0', spec: '#ffffff', glow: '#d0a0ff', value: 22000,         name: 'SINGULARITY' },
+    stardust:    { color: '#ffffa0', edge: '#a0a040', spec: '#ffffff', glow: '#ffffa0', value: 48000,         name: 'STARDUST' },
+    nebula:      { color: '#ff80ff', edge: '#a040a0', spec: '#ffd0ff', glow: '#ff80ff', value: 106000,        name: 'NEBULA' },
+    quasar:      { color: '#80ffe8', edge: '#40a0a0', spec: '#ffffff', glow: '#80ffe8', value: 233000,        name: 'QUASAR' },
+    pulsar:      { color: '#8080ff', edge: '#4040a0', spec: '#d0d0ff', glow: '#8080ff', value: 513000,        name: 'PULSAR' },
+    antimatter:  { color: '#ff2020', edge: '#601010', spec: '#ffa040', glow: '#ff4040', value: 1130000,       name: 'ANTIMATTER' },
+    darkmatter:  { color: '#100018', edge: '#000000', spec: '#a060ff', glow: '#a060ff', value: 2500000,       name: 'DARKMATTER' },
+    tachyon:     { color: '#c0ff40', edge: '#608018', spec: '#ffffa0', glow: '#c0ff40', value: 5400000,       name: 'TACHYON' },
+    quantum:     { color: '#4080ff', edge: '#103080', spec: '#80c0ff', glow: '#80c0ff', value: 12000000,      name: 'QUANTUM' },
+    infinity:    { color: '#ffffff', edge: '#a0a0c0', spec: '#ffffff', glow: '#ffe0ff', value: 26000000,      name: 'INFINITY' },
+    genesis:     { color: '#ffd0a0', edge: '#a08060', spec: '#ffffff', glow: '#ffe0c0', value: 58000000,      name: 'GENESIS' },
+    // 20 NEW deep tiers, depths up to 500k
+    ascension:   { color: '#ffe0e0', edge: '#a08080', spec: '#ffffff', glow: '#ffd0d0', value: 128000000,     name: 'ASCENSION' },
+    zenith:      { color: '#ffe8a0', edge: '#a89060', spec: '#ffffff', glow: '#ffe080', value: 281000000,     name: 'ZENITH' },
+    ethereal:    { color: '#a0e0ff', edge: '#5080a0', spec: '#ffffff', glow: '#a0d0ff', value: 619000000,     name: 'ETHEREAL' },
+    omega:       { color: '#ff60ff', edge: '#a020a0', spec: '#ffd0ff', glow: '#ff80ff', value: 1360000000,    name: 'OMEGA' },
+    chronos:     { color: '#c08040', edge: '#603018', spec: '#ffd098', glow: '#e0a060', value: 3000000000,    name: 'CHRONOS' },
+    nirvana:     { color: '#80ffc0', edge: '#208060', spec: '#d0ffe8', glow: '#a0ffd0', value: 6600000000,    name: 'NIRVANA' },
+    paradox:     { color: '#6040ff', edge: '#20186a', spec: '#a080ff', glow: '#8060ff', value: 14500000000,   name: 'PARADOX' },
+    eclipse:     { color: '#202028', edge: '#000000', spec: '#ff8040', glow: '#ff6020', value: 32000000000,   name: 'ECLIPSE' },
+    supernova:   { color: '#ffd040', edge: '#a07020', spec: '#ffffff', glow: '#ffa040', value: 70000000000,   name: 'SUPERNOVA' },
+    cosmos:      { color: '#4060c0', edge: '#102060', spec: '#c0d0ff', glow: '#80a0ff', value: 154000000000,  name: 'COSMOS' },
+    oblivion:    { color: '#1a0020', edge: '#000000', spec: '#c060ff', glow: '#8040c0', value: 339000000000,  name: 'OBLIVION' },
+    dimension:   { color: '#40ffe0', edge: '#108080', spec: '#a0ffff', glow: '#80ffe8', value: 745000000000,  name: 'DIMENSION' },
+    realm:       { color: '#a060e0', edge: '#502080', spec: '#e0c0ff', glow: '#c080ff', value: 1640000000000, name: 'REALM' },
+    divine:      { color: '#ffffe0', edge: '#a0a080', spec: '#ffffff', glow: '#ffffa0', value: 3600000000000, name: 'DIVINE' },
+    eternal:     { color: '#ff6060', edge: '#a02020', spec: '#ffa0a0', glow: '#ff8080', value: 7900000000000, name: 'ETERNAL' },
+    transcend:   { color: '#80c0ff', edge: '#306080', spec: '#e0f0ff', glow: '#a0d8ff', value: 17500000000000, name: 'TRANSCEND' },
+    apex:        { color: '#ff8000', edge: '#a04000', spec: '#ffd080', glow: '#ffa040', value: 38500000000000, name: 'APEX' },
+    archon:      { color: '#9040ff', edge: '#401080', spec: '#d0a0ff', glow: '#b070ff', value: 84700000000000, name: 'ARCHON' },
+    primordial:  { color: '#604020', edge: '#201008', spec: '#a0805a', glow: '#a06040', value: 186000000000000, name: 'PRIMORDIAL' },
+    creation:    { color: '#ffffff', edge: '#80a0ff', spec: '#ffffff', glow: '#ffd0ff', value: 410000000000000, name: 'CREATION' },
   };
-  // Ordered list for depth-based generation (deeper tiers appear later)
+  const QUALITY = [
+    { prefix: '',  mult: 1,    glow: null,        nameSuffix: '' },
+    { prefix: 'g_', mult: 1.25, glow: '#fff080',  nameSuffix: ' [G]' },   // gold variant
+    { prefix: 'd_', mult: 2,    glow: '#80f8ff',  nameSuffix: ' [D]' },   // diamond variant
+    { prefix: 'r_', mult: 5,    glow: '#ff80ff',  nameSuffix: ' [R]' },   // rainbow variant
+  ];
+  // Build ORE_TYPES (base + all quality variants).
+  const ORE_TYPES = {};
+  for (const baseKey in BASE_ORES) {
+    const base = BASE_ORES[baseKey];
+    for (const q of QUALITY) {
+      ORE_TYPES[q.prefix + baseKey] = {
+        color: base.color,
+        edge: base.edge,
+        spec: base.spec,
+        glow: q.glow || base.glow,
+        value: Math.ceil(base.value * q.mult),
+        name: base.name + q.nameSuffix,
+        baseType: baseKey,
+        quality: q.prefix === '' ? 'normal' : (q.prefix === 'g_' ? 'gold' : (q.prefix === 'd_' ? 'diamond' : 'rainbow')),
+      };
+    }
+  }
+  // Ordered list for depth-based generation (only BASE ores spawn naturally;
+  // gold/diamond/rainbow variants are crafted in the conversion machine).
   const TIER_ORDER = [
     { type: 'coal',        minDepth: 0     },
     { type: 'copper',      minDepth: 200   },
@@ -702,6 +748,27 @@
     { type: 'quantum',     minDepth: 49000 },
     { type: 'infinity',    minDepth: 59000 },
     { type: 'genesis',     minDepth: 72000 },
+    // 20 new deeper tiers up to depth 500k
+    { type: 'ascension',   minDepth: 90000  },
+    { type: 'zenith',      minDepth: 110000 },
+    { type: 'ethereal',    minDepth: 130000 },
+    { type: 'omega',       minDepth: 155000 },
+    { type: 'chronos',     minDepth: 180000 },
+    { type: 'nirvana',     minDepth: 210000 },
+    { type: 'paradox',     minDepth: 240000 },
+    { type: 'eclipse',     minDepth: 270000 },
+    { type: 'supernova',   minDepth: 300000 },
+    { type: 'cosmos',      minDepth: 330000 },
+    { type: 'oblivion',    minDepth: 360000 },
+    { type: 'dimension',   minDepth: 380000 },
+    { type: 'realm',       minDepth: 400000 },
+    { type: 'divine',      minDepth: 420000 },
+    { type: 'eternal',     minDepth: 440000 },
+    { type: 'transcend',   minDepth: 455000 },
+    { type: 'apex',        minDepth: 470000 },
+    { type: 'archon',      minDepth: 480000 },
+    { type: 'primordial',  minDepth: 490000 },
+    { type: 'creation',    minDepth: 500000 },
   ];
 
   const game = {
@@ -750,6 +817,8 @@
     troveScrollY: 0,
     drag: null, // { source: 'carried'|'placed', idx, type }
     visit: null, // when set, base interior is viewing another user's trove (read-only)
+    machine: null, // { input: [oreType, ...], result: oreType|null }
+    collectToast: null, // { text, time }
   };
 
   // ---------- MULTIPLAYER ----------
@@ -854,7 +923,7 @@
 
   // Scenes where the player is actually IN the game world and should be visible
   // to other players. Menu/leaderboards/admin/title/login/boot are excluded.
-  const IN_GAME_SCENES = { surface:1, shaft:1, base:1, shop:1, dead:1 };
+  const IN_GAME_SCENES = { surface:1, shaft:1, base:1, shop:1, machine:1, dead:1 };
   function isInGameScene() { return !!IN_GAME_SCENES[game.scene]; }
 
   function sendUpdate() {
@@ -908,6 +977,49 @@
   function oxygenTankCount() { return Math.max(0, Math.round((game.oxygenMax - 100) / 16)); }
   function placedSlotCount() { return 12 + game.troveExpansions * 6; }
   function carriedMaxFrom(backpacks) { return 12 + backpacks * 1; }
+
+  // Collect toast — short banner at the top of the screen showing what was just picked up.
+  function showCollectToast(text) {
+    game.collectToast = { text, time: 2.5, maxTime: 2.5 };
+  }
+  function drawCollectToast() {
+    if (!game.collectToast) return;
+    const t = game.collectToast;
+    const a = Math.min(1, t.time / 0.4);
+    ctx.globalAlpha = a;
+    const tw = Math.min(W - 40, t.text.length * 7 + 20);
+    const tx = (W - tw) / 2;
+    const ty = 64;
+    ctx.fillStyle = 'rgba(10,8,20,0.88)';
+    ctx.fillRect(tx, ty, tw, 26);
+    ctx.fillStyle = '#80c0ff';
+    ctx.fillRect(tx, ty, tw, 2);
+    ctx.fillRect(tx, ty + 24, tw, 2);
+    pixelText(t.text, W / 2, ty + 6, 11, '#fff', 'center');
+    ctx.globalAlpha = 1;
+  }
+
+  // Compact number form: 250k, 10M, 1.5B, 410T, 12Q. Used for money, prices, /s rates.
+  function fmtShort(n) {
+    if (!isFinite(n)) return '0';
+    const abs = Math.abs(n);
+    if (abs < 1000) return String(Math.floor(n));
+    const units = [
+      [1e15, 'Q'],
+      [1e12, 'T'],
+      [1e9,  'B'],
+      [1e6,  'M'],
+      [1e3,  'k'],
+    ];
+    for (const [div, suf] of units) {
+      if (abs >= div) {
+        const v = n / div;
+        const fmt = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+        return fmt.replace(/\.?0+$/, '') + suf;
+      }
+    }
+    return String(Math.floor(n));
+  }
   const SELL_MULT = 5;
   function isOnline() { return net.connected && net.sock; }
 
@@ -1314,6 +1426,7 @@
     if ((input('w') || input('arrowup') || input(' ')) && p.onGround) {
       const upHeld = input('w') || input('arrowup');
       const intoBase = p.x + p.w > BASE_X && p.x < BASE_X + BASE_W;
+      const intoMachine = p.x + p.w > MACHINE_X && p.x < MACHINE_X + MACHINE_W;
       const intoShop = p.x + p.w > SHOP_X && p.x < SHOP_X + SHOP_W;
       // also suppress jump when in front of a remote player's house
       let intoRemoteHouse = false;
@@ -1322,7 +1435,7 @@
         const hx = remoteHouseX(i);
         if (p.x + p.w > hx && p.x < hx + BASE_W) { intoRemoteHouse = true; break; }
       }
-      if (!(intoBase && upHeld) && !(intoShop && upHeld) && !(intoRemoteHouse && upHeld)) {
+      if (!(intoBase && upHeld) && !(intoMachine && upHeld) && !(intoShop && upHeld) && !(intoRemoteHouse && upHeld)) {
         p.vy = -9;
         p.onGround = false;
       }
@@ -1359,6 +1472,8 @@
       if (pcx >= BASE_X && pcx <= BASE_X + BASE_W) {
         game.visit = null;
         game.scene = 'base';
+      } else if (pcx >= MACHINE_X && pcx <= MACHINE_X + MACHINE_W) {
+        openMachine();
       } else if (pcx >= SHOP_X && pcx <= SHOP_X + SHOP_W) {
         game.scene = 'shop';
       } else {
@@ -1507,13 +1622,22 @@
       }
     }
     if (justPressed[' '] && game.grabbable.length > 0) {
+      const tally = {}; // type -> count
       for (const g of game.grabbable) {
         if (game.carried.length >= game.carriedMax) break;
         g.ore.collected = true;
         game.carried.push(g.cluster.type);
+        tally[g.cluster.type] = (tally[g.cluster.type] || 0) + 1;
         spawnParticles(g.sx + 3, g.sy + 3, ORE_TYPES[g.cluster.type].spec, 7);
         spawnParticles(g.sx + 3, g.sy + 3, ORE_TYPES[g.cluster.type].color, 4);
       }
+      // toast: "Collected 1x Genesis ore (1M/s)" — one line per type collected
+      const lines = [];
+      for (const t in tally) {
+        const ot = ORE_TYPES[t];
+        lines.push(`Collected ${tally[t]}x ${ot.name} ore ($${fmtShort(ot.value)}/s)`);
+      }
+      if (lines.length > 0) showCollectToast(lines.join(' · '));
     }
 
     const MILESTONES = {
@@ -1531,6 +1655,36 @@
       9000:  'PLASMA RIFT',
       10400: 'THE VOID',
       11900: 'SINGULARITY...',
+      14000: 'STARDUST DRIFTS',
+      17000: 'NEBULA SHROUD',
+      20500: 'QUASAR BURST',
+      24500: 'PULSAR PULSE',
+      29000: 'ANTIMATTER',
+      34500: 'INTO DARKMATTER',
+      41000: 'TACHYON STREAM',
+      49000: 'QUANTUM REALM',
+      59000: 'BEYOND INFINITY',
+      72000: 'GENESIS STRATA',
+      90000: 'ASCENSION',
+      110000: 'ZENITH',
+      130000: 'ETHEREAL LAYER',
+      155000: 'OMEGA POINT',
+      180000: 'CHRONOS DRIFT',
+      210000: 'NIRVANA',
+      240000: 'PARADOX FIELD',
+      270000: 'ECLIPSE',
+      300000: 'SUPERNOVA CORE',
+      330000: 'COSMOS',
+      360000: 'OBLIVION',
+      380000: 'DIMENSION SHIFT',
+      400000: 'OUTER REALM',
+      420000: 'DIVINE LAYER',
+      440000: 'ETERNAL',
+      455000: 'TRANSCEND',
+      470000: 'APEX',
+      480000: 'ARCHON',
+      490000: 'PRIMORDIAL',
+      500000: 'CREATION',
     };
     for (const m in MILESTONES) {
       const md = +m;
@@ -1645,8 +1799,9 @@
       }
     }
     // fence in middle of path
-    // base & shop
+    // buildings
     drawBase(BASE_X - camX, SURFACE_GROUND_Y - BASE_H);
+    drawMachine(MACHINE_X - camX, SURFACE_GROUND_Y - MACHINE_H);
     drawShop(SHOP_X - camX, SURFACE_GROUND_Y - SHOP_H);
     drawHole(HOLE_X - camX, SURFACE_GROUND_Y);
 
@@ -1892,6 +2047,86 @@
     ctx.fillStyle = color;
     ctx.fillRect(x - 4, y - 4, 32, 28);
     ctx.globalAlpha = 1;
+  }
+
+  function drawMachine(x, y) {
+    // Industrial conversion machine — metallic grey box with pipes and gauges.
+    const w = MACHINE_W, h = MACHINE_H;
+    // main body
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#5a5a6a';
+    ctx.fillRect(x, y, w, 6);
+    ctx.fillStyle = '#1a1a24';
+    ctx.fillRect(x, y + h - 4, w, 4);
+    // riveted panels
+    for (let py = y + 12; py < y + h - 12; py += 18) {
+      for (let px = x + 6; px < x + w - 6; px += 18) {
+        ctx.fillStyle = '#1a1a24';
+        ctx.fillRect(px, py, 2, 2);
+      }
+    }
+    // top pipes/chimneys
+    ctx.fillStyle = '#5a5a6a';
+    ctx.fillRect(x + 18, y - 22, 10, 22);
+    ctx.fillRect(x + w - 28, y - 30, 10, 30);
+    ctx.fillStyle = '#2a2a34';
+    ctx.fillRect(x + 18, y - 22, 10, 3);
+    ctx.fillRect(x + w - 28, y - 30, 10, 3);
+    // steam puffs
+    const t = game.timeAcc;
+    for (let i = 0; i < 3; i++) {
+      const sy = y - 30 - i * 8 - Math.sin(t * 1.2 + i) * 2;
+      const sx = x + 22 + Math.sin(t * 0.8 + i * 0.7) * 2;
+      ctx.fillStyle = `rgba(220,220,230,${0.4 - i * 0.1})`;
+      ctx.fillRect(sx, sy, 5 + i, 5 + i);
+      const sy2 = y - 38 - i * 8 - Math.sin(t * 1.4 + i + 3) * 2;
+      const sx2 = x + w - 25 + Math.sin(t * 0.9 + i) * 2;
+      ctx.fillStyle = `rgba(220,220,230,${0.4 - i * 0.1})`;
+      ctx.fillRect(sx2, sy2, 5 + i, 5 + i);
+    }
+    // sign on top
+    ctx.fillStyle = '#1a1a24';
+    ctx.fillRect(x + 6, y - 16, w - 12, 14);
+    ctx.strokeStyle = '#80c0ff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 6.5, y - 15.5, w - 13, 13);
+    pixelText('CONVERTER', x + w / 2, y - 14, 11, '#80c0ff', 'center');
+    // gauges (3 round-ish dials)
+    const gaugeY = y + 30;
+    for (let i = 0; i < 3; i++) {
+      const gx = x + 14 + i * 32;
+      ctx.fillStyle = '#1a1a24';
+      ctx.fillRect(gx, gaugeY, 20, 20);
+      ctx.fillStyle = '#3a4a6a';
+      ctx.fillRect(gx + 2, gaugeY + 2, 16, 16);
+      // needle
+      const angle = (t * 0.7 + i) % (Math.PI * 2);
+      const nx = gx + 10 + Math.cos(angle) * 7;
+      const ny = gaugeY + 10 + Math.sin(angle) * 7;
+      ctx.strokeStyle = i === 1 ? '#ffe080' : '#80c0ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(gx + 10, gaugeY + 10);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+    }
+    // door / entry opening (glowing blue)
+    const dx = x + w / 2 - 14;
+    const dy = y + h - 56;
+    ctx.fillStyle = '#0a0a14';
+    ctx.fillRect(dx, dy, 28, 56);
+    // glow inside door cycling
+    const glowPulse = 0.5 + 0.5 * Math.sin(t * 3);
+    ctx.fillStyle = `rgba(120,200,255,${0.4 + 0.4 * glowPulse})`;
+    ctx.fillRect(dx + 4, dy + 6, 20, 44);
+    ctx.fillStyle = '#80c0ff';
+    ctx.fillRect(dx, dy, 28, 2);
+    ctx.fillRect(dx, dy, 2, 56);
+    ctx.fillRect(dx + 26, dy, 2, 56);
+    // ground bolts
+    ctx.fillStyle = '#1a1a24';
+    ctx.fillRect(x - 4, y + h - 8, w + 8, 8);
   }
 
   function drawShop(x, y) {
@@ -2154,14 +2389,18 @@
 
     drawParticles(0, 0);
 
-    // [SPACE] GRAB prompt when ores are in range
+    // [SPACE] GRAB <name> prompt when ores are in range
     if (game.grabbable && game.grabbable.length > 0) {
       const full = game.carried.length >= game.carriedMax;
-      const label = full ? 'CARRY FULL' : '[SPACE] GRAB';
+      // pick the highest-value grabbable to display its name
+      const best = game.grabbable.reduce((b, g) =>
+        (!b || ORE_TYPES[g.cluster.type].value > ORE_TYPES[b.cluster.type].value) ? g : b, null);
+      const oreName = best ? ORE_TYPES[best.cluster.type].name : '';
+      const label = full ? `CARRY FULL` : `[SPACE] GRAB ${oreName}`;
       const color = full ? '#ff8080' : '#ffe080';
       const px = p.x + p.w / 2;
       const py = PLAYER_SHAFT_Y - 18;
-      const tw = label.length * 7 + 12;
+      const tw = label.length * 7 + 14;
       const bob = Math.sin(game.timeAcc * 6) * 2;
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fillRect(px - tw / 2, py + bob, tw, 14);
@@ -2327,13 +2566,13 @@
     // money
     panel(8, 8, 150, 32);
     drawCoin(16, 18, 12);
-    pixelText('$' + Math.floor(game.money), 36, 16, 16, '#fff');
+    pixelText('$' + fmtShort(game.money), 36, 16, 16, '#fff');
 
     // carried + income
     panel(W - 220, 8, 212, 32);
     drawOreIcon(W - 210, 19, 'coal', 10);
     pixelText(`${game.carried.length}/${game.carriedMax}`, W - 196, 16, 14, '#fff');
-    pixelText(`+$${passiveIncome()}/s`, W - 140, 16, 14, C.textHi);
+    pixelText(`+$${fmtShort(passiveIncome())}/s`, W - 140, 16, 14, C.textHi);
 
     if (game.maxDepth > 0) {
       panel(W / 2 - 80, 8, 160, 28);
@@ -2356,7 +2595,7 @@
   function drawShaftHUD() {
     panel(8, 8, 150, 32);
     drawCoin(16, 18, 12);
-    pixelText('$' + Math.floor(game.money), 36, 16, 16, '#fff');
+    pixelText('$' + fmtShort(game.money), 36, 16, 16, '#fff');
 
     // O2 + HP stacked
     const oxPct = game.oxygen / game.oxygenMax;
@@ -2395,7 +2634,7 @@
     panel(W - 220, 8, 212, 32);
     drawOreIcon(W - 210, 19, 'coal', 10);
     pixelText(`${game.carried.length}/${game.carriedMax}`, W - 196, 16, 14, '#fff');
-    pixelText(`+$${passiveIncome()}/s`, W - 140, 16, 14, C.textHi);
+    pixelText(`+$${fmtShort(passiveIncome())}/s`, W - 140, 16, 14, C.textHi);
 
     // depth at bottom
     panel(W / 2 - 100, H - 50, 200, 36);
@@ -2442,7 +2681,7 @@
     // back wall furniture: shelves with placed ores
     pixelText('OVERFLOW MINE TROVE', W / 2, 14, 22, '#ffe080', 'center');
     pixelText('click empty slot to place, click ore to take it back', W / 2, 42, 12, C.textDim, 'center');
-    pixelText('total income: +$' + passiveIncome() + '/s', W / 2, 60, 14, C.textHi, 'center');
+    pixelText('total income: +$' + fmtShort(passiveIncome()) + '/s', W / 2, 60, 14, C.textHi, 'center');
 
     // GROWS-DOWN GRID: first several upgrades take up the empty vertical space
     // (no scroll), then beyond the cap rows scroll inside the viewport.
@@ -2559,7 +2798,7 @@
         ctx.fillRect(gemX + 2, gemY + 2, Math.max(3, Math.round(6 * sc)), Math.max(2, Math.round(3 * sc)));
         if (showLabels) {
           pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
-          pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+          pixelText('+$' + fmtShort(ot.value) + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
         }
         if (hovered && game.carried.length < game.carriedMax && !game.drag) {
           pixelText('take', sx + slotSize / 2, sy + 4, 9, '#ffe080', 'center');
@@ -2632,11 +2871,11 @@
     // Action buttons row above the tray
     if (button(W / 2 - 280, H - 130, 130, 26, 'PLACE BEST')) placeBestOres();
     const sellAllValue = game.carried.reduce((s, t) => s + ORE_TYPES[t].value * SELL_MULT, 0);
-    if (button(W / 2 - 140, H - 130, 130, 26, `SELL ALL $${sellAllValue}`, game.carried.length > 0)) {
+    if (button(W / 2 - 140, H - 130, 130, 26, `SELL ALL $${fmtShort(sellAllValue)}`, game.carried.length > 0)) {
       sellAllCarried();
     }
     const tCost = trovePrice();
-    const tLabel = `+6 SLOTS $${tCost}`;
+    const tLabel = `+6 SLOTS $${fmtShort(tCost)}`;
     if (button(W / 2 + 0, H - 130, 170, 26, tLabel, game.money >= tCost)) {
       buyItem('trove', tCost, () => {
         game.troveExpansions++;
@@ -2675,7 +2914,7 @@
           ctx.fillStyle = 'rgba(255,224,128,0.18)';
           ctx.fillRect(cx, cy, slotPix, slotPix);
           const value = ORE_TYPES[ore].value * SELL_MULT;
-          pixelText('$' + value, cx + slotPix / 2, cy - 12, 10, '#ffe080', 'center');
+          pixelText('$' + fmtShort(value), cx + slotPix / 2, cy - 12, 10, '#ffe080', 'center');
           // mousedown starts a drag (defers sell to mouseup)
           if (mouse.clicked && !game.drag) {
             game.drag = { source: 'carried', idx: i, type: ore };
@@ -2687,7 +2926,7 @@
     // money top-right
     panel(W - 170, 14, 156, 32);
     drawCoin(W - 160, 24, 12);
-    pixelText('$' + Math.floor(game.money), W - 140, 22, 14, '#fff');
+    pixelText('$' + fmtShort(game.money), W - 140, 22, 14, '#fff');
 
     if (button(W - 140, H - 30, 120, 26, 'LEAVE [B]')) {
       game.scene = 'surface';
@@ -2744,8 +2983,8 @@
     } else if (v.error || !v.data) {
       pixelText(v.error || 'no data', W / 2, H / 2, 14, '#ff8080', 'center');
     } else {
-      pixelText(`income: +$${v.data.passiveIncome || 0}/s`, W / 2, 56, 14, C.textHi, 'center');
-      pixelText(`money: $${Math.floor(v.data.money || 0).toLocaleString()}`, W / 2, 74, 12, C.textDim, 'center');
+      pixelText(`income: +$${fmtShort(v.data.passiveIncome || 0)}/s`, W / 2, 56, 14, C.textHi, 'center');
+      pixelText(`money: $${fmtShort(v.data.money || 0)}`, W / 2, 74, 12, C.textDim, 'center');
 
       // mini summary of upgrades
       const stats = [
@@ -2823,7 +3062,7 @@
           ctx.fillStyle = ot.spec;
           ctx.fillRect(sx + 30, sy + 24, 6, 3);
           pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 12, 9, '#fff', 'center');
-          pixelText('+$' + ot.value + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
+          pixelText('+$' + fmtShort(ot.value) + '/s', sx + slotSize / 2, sy + slotSize - 22, 8, C.textHi, 'center');
         } else {
           pixelText('—', sx + slotSize / 2, sy + slotSize / 2 - 4, 14, '#3a2818', 'center');
         }
@@ -2874,6 +3113,260 @@
   }
 
   // ---------- SHOP ----------
+  // ---------- CONVERSION MACHINE ----------
+  function openMachine() {
+    game.scene = 'machine';
+    game.machine = { input: [], source: [] }; // input[]=types, source[]={from:'carried'|'placed', idx}
+  }
+
+  function closeMachine() {
+    // return any pending inputs to where they came from
+    if (game.machine && game.machine.source) {
+      // already pulled from arrays; we kept references — so just clear
+    }
+    game.machine = null;
+    game.scene = 'surface';
+  }
+
+  // Determine what an input array would convert into.
+  // Rules:
+  //   2 same normal-quality → 1 gold of that ore (prefix 'g_')
+  //   2 same gold-quality   → 1 diamond of that ore (prefix 'd_')
+  //   3 same diamond-quality → 1 rainbow of that ore (prefix 'r_')
+  function conversionResult(types) {
+    if (!Array.isArray(types) || types.length < 2) return null;
+    const first = types[0];
+    if (!ORE_TYPES[first]) return null;
+    // all must match exactly
+    for (let i = 1; i < types.length; i++) if (types[i] !== first) return null;
+    const ot = ORE_TYPES[first];
+    const baseType = ot.baseType;
+    const q = ot.quality;
+    if (q === 'normal' && types.length === 2) return 'g_' + baseType;
+    if (q === 'gold'   && types.length === 2) return 'd_' + baseType;
+    if (q === 'diamond' && types.length === 3) return 'r_' + baseType;
+    return null;
+  }
+
+  function machineAddInput(from, idx) {
+    if (!game.machine) return;
+    // refuse duplicate sources so a single slot can't be added twice
+    for (const s of game.machine.source) {
+      if (s.from === from && s.idx === idx) return;
+    }
+    let type = null;
+    if (from === 'carried') type = game.carried[idx];
+    else if (from === 'placed') type = game.placed[idx];
+    if (!type) return;
+    if (game.machine.input.length >= 3) return;
+    game.machine.input.push(type);
+    game.machine.source.push({ from, idx });
+  }
+
+  function machineRemoveInput(slot) {
+    if (!game.machine) return;
+    game.machine.input.splice(slot, 1);
+    game.machine.source.splice(slot, 1);
+  }
+
+  function machineConvert() {
+    if (!game.machine) return;
+    const result = conversionResult(game.machine.input);
+    if (!result) return;
+    // Consume sources (highest indices first so splices don't shift things)
+    const carriedRemove = [];
+    const placedNullify = [];
+    for (const s of game.machine.source) {
+      if (s.from === 'carried') carriedRemove.push(s.idx);
+      else placedNullify.push(s.idx);
+    }
+    carriedRemove.sort((a, b) => b - a);
+    for (const i of carriedRemove) game.carried.splice(i, 1);
+    for (const i of placedNullify) game.placed[i] = null;
+    // Put result in carried (or first empty placed if carried is full)
+    if (game.carried.length < game.carriedMax) {
+      game.carried.push(result);
+    } else {
+      const slot = game.placed.findIndex(o => o === null);
+      if (slot !== -1) game.placed[slot] = result;
+      else game.carried.push(result); // overflow — accept beyond cap
+    }
+    sendPlacedSync();
+    // reset machine staging
+    game.machine.input = [];
+    game.machine.source = [];
+    // toast
+    showCollectToast(`Converted: 1x ${ORE_TYPES[result].name} (${fmtShort(ORE_TYPES[result].value)}/s)`);
+  }
+
+  function drawMachineScreen() {
+    // dark industrial background
+    ctx.fillStyle = '#181820';
+    ctx.fillRect(0, 0, W, H);
+    // floor / wall divide
+    ctx.fillStyle = '#222230';
+    ctx.fillRect(0, 0, W, H - 100);
+    ctx.fillStyle = '#3a3a4a';
+    ctx.fillRect(0, H - 100, W, 100);
+    ctx.fillStyle = '#1a1a24';
+    ctx.fillRect(0, H - 100, W, 4);
+    // panel pattern
+    for (let x = 0; x < W; x += 32) {
+      ctx.fillStyle = (x / 32) % 2 ? '#262632' : '#222230';
+      ctx.fillRect(x, 0, 32, H - 100);
+    }
+    // glowing panel lights
+    for (let i = 0; i < 6; i++) {
+      const lx = 40 + i * 130;
+      const ly = 30 + Math.sin(game.timeAcc * 2 + i) * 1;
+      ctx.fillStyle = `rgba(120,200,255,${0.4 + 0.3 * Math.sin(game.timeAcc * 3 + i)})`;
+      ctx.fillRect(lx, ly, 4, 4);
+    }
+    pixelText('CONVERSION MACHINE', W / 2, 14, 22, '#80c0ff', 'center');
+    pixelText('combine identical ores to upgrade them', W / 2, 42, 11, C.textDim, 'center');
+
+    // Recipes reminder
+    pixelText('2x normal -> 1x GOLD (1.25x)    2x GOLD -> 1x DIAMOND (2x)    3x DIAMOND -> 1x RAINBOW (5x)',
+      W / 2, 60, 10, '#aac8ff', 'center');
+
+    // INPUT slots (3)
+    const slotSize = 64, slotY = 90, gap = 12;
+    const inSlotsX = W / 2 - (3 * slotSize + 2 * gap) / 2;
+    pixelText('INPUTS', W / 2 - 200, slotY - 18, 12, '#fff');
+    for (let i = 0; i < 3; i++) {
+      const sx = inSlotsX + i * (slotSize + gap);
+      const sy = slotY;
+      ctx.fillStyle = '#1a1a24';
+      ctx.fillRect(sx, sy, slotSize, slotSize);
+      ctx.strokeStyle = '#80c0ff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, slotSize - 1, slotSize - 1);
+      const t = game.machine && game.machine.input[i];
+      if (t) {
+        const ot = ORE_TYPES[t];
+        if (ot.glow) {
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = ot.glow;
+          ctx.fillRect(sx + 8, sy + 8, slotSize - 16, slotSize - 16);
+          ctx.globalAlpha = 1;
+        }
+        ctx.fillStyle = ot.color;
+        ctx.fillRect(sx + slotSize / 2 - 10, sy + slotSize / 2 - 8, 20, 16);
+        ctx.fillStyle = ot.edge;
+        ctx.fillRect(sx + slotSize / 2 - 10, sy + slotSize / 2 + 5, 20, 3);
+        pixelText(ot.name, sx + slotSize / 2, sy + slotSize - 10, 7, '#fff', 'center');
+        const hover = mouse.x >= sx && mouse.x <= sx + slotSize && mouse.y >= sy && mouse.y <= sy + slotSize;
+        if (hover) {
+          ctx.fillStyle = 'rgba(255,128,128,0.18)';
+          ctx.fillRect(sx, sy, slotSize, slotSize);
+          pixelText('remove', sx + slotSize / 2, sy - 12, 9, '#ff8080', 'center');
+          if (mouse.clicked) machineRemoveInput(i);
+        }
+      } else {
+        pixelText('empty', sx + slotSize / 2, sy + slotSize / 2 - 4, 10, '#444', 'center');
+      }
+    }
+
+    // result preview
+    const result = game.machine ? conversionResult(game.machine.input) : null;
+    const arrowX = inSlotsX + 3 * slotSize + 3 * gap + 30;
+    const resX = arrowX + 40;
+    pixelText('->', arrowX, slotY + 26, 18, result ? '#80c0ff' : '#3a3a48', 'center');
+    ctx.fillStyle = '#1a1a24';
+    ctx.fillRect(resX, slotY, slotSize, slotSize);
+    ctx.strokeStyle = result ? '#ffe080' : '#3a3a48';
+    ctx.strokeRect(resX + 0.5, slotY + 0.5, slotSize - 1, slotSize - 1);
+    if (result && ORE_TYPES[result]) {
+      const ot = ORE_TYPES[result];
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = ot.glow || ot.color;
+      ctx.fillRect(resX + 4, slotY + 4, slotSize - 8, slotSize - 8);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = ot.color;
+      ctx.fillRect(resX + slotSize / 2 - 10, slotY + slotSize / 2 - 8, 20, 16);
+      ctx.fillStyle = ot.edge;
+      ctx.fillRect(resX + slotSize / 2 - 10, slotY + slotSize / 2 + 5, 20, 3);
+      pixelText(ot.name, resX + slotSize / 2, slotY + slotSize - 10, 8, '#fff', 'center');
+    }
+
+    // convert button
+    const canConvert = !!result;
+    if (button(resX + slotSize + 14, slotY + 18, 130, 32, 'CONVERT', canConvert)) {
+      machineConvert();
+    }
+    if (button(resX + slotSize + 14, slotY + 56, 130, 22, 'CLEAR', game.machine && game.machine.input.length > 0)) {
+      game.machine.input = [];
+      game.machine.source = [];
+    }
+
+    // SOURCE: carried + placed (clickable to add to inputs)
+    const listY0 = slotY + slotSize + 30;
+    pixelText('YOUR ORES (click to add)', W / 2, listY0, 12, '#fff', 'center');
+    const colW = (W - 80) / 2;
+    const carriedX = 40;
+    const placedX = 40 + colW + 8;
+    const listTop = listY0 + 20;
+    const listH = H - listTop - 70;
+    pixelText('CARRIED', carriedX + 8, listTop - 16, 11, C.textDim);
+    pixelText('FROM HOUSE', placedX + 8, listTop - 16, 11, C.textDim);
+
+    // helper to draw an ore card
+    function drawOreCard(x, y, w, h, type, onClick) {
+      const hovered = mouse.x >= x && mouse.x <= x + w && mouse.y >= y && mouse.y <= y + h;
+      ctx.fillStyle = hovered ? '#3a3a4a' : '#1a1a24';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#3a3a48';
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      const ot = ORE_TYPES[type];
+      if (ot.glow) {
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = ot.glow;
+        ctx.fillRect(x + 2, y + 2, 16, h - 4);
+        ctx.globalAlpha = 1;
+      }
+      drawOreIcon(x + 4, y + (h - 12) / 2, type, 12);
+      pixelText(ot.name, x + 24, y + 4, 10, '#fff');
+      pixelText('$' + fmtShort(ot.value) + '/s', x + 24, y + h - 12, 9, C.textHi);
+      if (hovered && mouse.clicked) onClick();
+    }
+
+    // Carried list (scrollable not implemented, just rows)
+    const rowH = 28;
+    const carriedItems = game.carried;
+    const maxRows = Math.floor(listH / (rowH + 2));
+    for (let i = 0; i < Math.min(carriedItems.length, maxRows); i++) {
+      const t = carriedItems[i];
+      drawOreCard(carriedX, listTop + i * (rowH + 2), colW, rowH, t, () => machineAddInput('carried', i));
+    }
+    if (carriedItems.length > maxRows) {
+      pixelText(`... +${carriedItems.length - maxRows} more`, carriedX + 8, listTop + maxRows * (rowH + 2), 10, '#aaa');
+    }
+    if (carriedItems.length === 0) pixelText('(empty)', carriedX + 8, listTop + 8, 11, '#666');
+
+    // Placed list (skip nulls)
+    const placedItems = [];
+    for (let i = 0; i < game.placed.length; i++) {
+      if (game.placed[i]) placedItems.push({ type: game.placed[i], idx: i });
+    }
+    for (let i = 0; i < Math.min(placedItems.length, maxRows); i++) {
+      const it = placedItems[i];
+      drawOreCard(placedX, listTop + i * (rowH + 2), colW, rowH, it.type, () => machineAddInput('placed', it.idx));
+    }
+    if (placedItems.length > maxRows) {
+      pixelText(`... +${placedItems.length - maxRows} more`, placedX + 8, listTop + maxRows * (rowH + 2), 10, '#aaa');
+    }
+    if (placedItems.length === 0) pixelText('(none placed)', placedX + 8, listTop + 8, 11, '#666');
+
+    // money top right
+    panel(W - 200, H - 50, 184, 36, '#0e0820');
+    drawCoin(W - 192, H - 38, 12);
+    pixelText('$' + fmtShort(game.money), W - 172, H - 40, 13, '#fff');
+
+    // leave button
+    if (button(W / 2 - 80, H - 50, 160, 36, 'LEAVE [B]')) closeMachine();
+    if (input('b')) closeMachine();
+  }
+
   function drawShopScreen() {
     drawSurface();
     ctx.fillStyle = 'rgba(8,4,16,0.78)';
@@ -2895,7 +3388,7 @@
     // money
     panel(px + pw - 160, py + 56, 140, 28, '#0e0820');
     drawCoin(px + pw - 150, py + 66, 12);
-    pixelText('$' + Math.floor(game.money), px + pw - 132, py + 64, 14, '#fff');
+    pixelText('$' + fmtShort(game.money), px + pw - 132, py + 64, 14, '#fff');
 
     // 3 items, 76px tall each
     drawShopItem(px + 20, py + 88, pw - 40, 80, {
@@ -3045,7 +3538,7 @@
 
     // buy button
     const canBuy = game.money >= item.cost;
-    if (button(x + w - 140, y + h / 2 - 18, 124, 38, `BUY  $${item.cost}`, canBuy)) {
+    if (button(x + w - 140, y + h / 2 - 18, 124, 38, `BUY  $${fmtShort(item.cost)}`, canBuy)) {
       item.onBuy();
     }
   }
@@ -3244,7 +3737,7 @@
         ctx.fillStyle = i === 0 ? '#ffe080' : i === 1 ? '#c0c0c0' : i === 2 ? '#cc8050' : '#aaa';
         pixelText('#' + (i + 1), listX + 20, row + 8, 14, ctx.fillStyle);
         pixelText(e.name, listX + 60, row + 8, 13, isMe ? '#ffffff' : '#fff');
-        const valStr = leaderboardTab === 'money' ? '$' + Math.floor(e.value).toLocaleString() : String(e.value);
+        const valStr = leaderboardTab === 'money' ? '$' + fmtShort(e.value) : String(e.value);
         pixelText(valStr, listX + listW - 16, row + 8, 13, C.textHi, 'right');
       }
     }
@@ -3352,7 +3845,11 @@
     adminPinInput.value = '';
     clearAllKeys();
     adminPinOverlay.classList.add('show');
-    setTimeout(() => adminPinInput.focus(), 30);
+    // Aggressive focus — some browsers refuse focus on freshly-shown elements
+    // until the next frame, so we try a few times.
+    adminPinInput.focus();
+    requestAnimationFrame(() => adminPinInput.focus());
+    setTimeout(() => adminPinInput.focus(), 50);
   }
   function closeAdminPin() {
     adminPinOverlay.classList.remove('show');
@@ -3389,12 +3886,16 @@
   }
   adminPinSubmit.addEventListener('click', submitAdminPin);
   adminPinCancel.addEventListener('click', () => { closeAdminPin(); });
+  // Block all key events from leaking to the window-level handler (which can
+  // otherwise interfere with input focus / digit insertion). Same pattern as chat.
   adminPinInput.addEventListener('keydown', (e) => {
-    // Accept main row & numpad numeric keys; let other navigation keys behave.
+    e.stopPropagation();
     if (e.key === 'Enter') { submitAdminPin(); e.preventDefault(); }
-    if (e.key === 'Escape') { closeAdminPin(); }
+    else if (e.key === 'Escape') { closeAdminPin(); e.preventDefault(); }
   });
-  // strip non-digits as user types (allows numpad too — both emit digits)
+  adminPinInput.addEventListener('keyup', (e) => { e.stopPropagation(); });
+  adminPinInput.addEventListener('keypress', (e) => { e.stopPropagation(); });
+  // strip non-digits as user types (numpad+main row both emit digit characters)
   adminPinInput.addEventListener('input', () => {
     const cleaned = adminPinInput.value.replace(/[^0-9]/g, '');
     if (cleaned !== adminPinInput.value) adminPinInput.value = cleaned;
@@ -3617,7 +4118,7 @@
     pixelText('YOU DIED', W / 2, H / 2 - 88, 44, '#ff4040', 'center');
     pixelText('all carried ores were lost', W / 2, H / 2 - 36, 14, '#fff', 'center');
     pixelText(`depth reached: ${Math.floor(game.maxDepth)}m`, W / 2, H / 2 - 14, 12, C.textDim, 'center');
-    pixelText(`income kept: +$${passiveIncome()}/s`, W / 2, H / 2 + 4, 12, C.textHi, 'center');
+    pixelText(`income kept: +$${fmtShort(passiveIncome())}/s`, W / 2, H / 2 + 4, 12, C.textHi, 'center');
     if (button(W / 2 - 90, H / 2 + 36, 180, 48, 'TRY AGAIN')) {
       game.player.limp = 0;
       exitShaftToSurface();
@@ -3644,8 +4145,14 @@
     // drop any pending drag if we leave the base scene
     if (game.scene !== 'base' && game.drag) game.drag = null;
     if (game.scene !== 'base' && game.visit) game.visit = null;
+    if (game.scene !== 'machine' && game.machine) game.machine = null;
 
     updateParticles();
+
+    if (game.collectToast) {
+      game.collectToast.time -= DT;
+      if (game.collectToast.time <= 0) game.collectToast = null;
+    }
 
     if (game.screenShake > 0) game.screenShake--;
 
@@ -3667,6 +4174,7 @@
     else if (game.scene === 'shaft') drawShaft();
     else if (game.scene === 'base') drawBaseScreen();
     else if (game.scene === 'shop') drawShopScreen();
+    else if (game.scene === 'machine') drawMachineScreen();
     else if (game.scene === 'dead') drawDeathScreen();
     ctx.restore();
 
@@ -3687,6 +4195,7 @@
 
     drawTouchButtons();
     drawDepthBar();
+    drawCollectToast();
     drawChatMessages();
   }
 
