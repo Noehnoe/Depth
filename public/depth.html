@@ -869,15 +869,13 @@
     return REMOTE_PALETTES[h % REMOTE_PALETTES.length];
   }
 
-  // Hard caps protect against runaway speeds when a player has stacked many upgrades —
-  // without this, depth jumps thousands of pixels per frame and the ore-generation loop
-  // iterates forever, freezing the tab.
-  const MAX_SPEED = 500;
+  // No hard speed cap — the runaway-tab crash is prevented by the iteration cap
+  // inside maybeGenerateOres (it fast-forwards instead of looping millions of times).
   function currentDescentSpeed() {
-    return Math.min(MAX_SPEED, game.descentSpeedBase * Math.pow(1.02, game.weights));
+    return game.descentSpeedBase * Math.pow(1.02, game.weights);
   }
   function currentAscentSpeed() {
-    return Math.min(MAX_SPEED, 15 * Math.pow(1.04, game.belts));
+    return 15 * Math.pow(1.04, game.belts);
   }
   const PRICE_MULT = 1.2;
   function weightPrice()   { return Math.ceil(75  * Math.pow(PRICE_MULT, game.weights        )); }
@@ -3749,7 +3747,22 @@
   // to 'menu' (and call initNetwork) on success, or show the login overlay on failure
   tryRestoreSession();
 
+  // Pause everything (state advance AND rendering) when the tab is hidden.
+  // Without this, browsers throttle setInterval on backgrounded/idle tabs and then
+  // fire a BURST of missed ticks when focus returns — burning seconds of oxygen
+  // in one frame. Also resets keys + draw timing on resume.
+  let lastVisibleAt = performance.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearAllKeys();
+    } else {
+      lastVisibleAt = performance.now();
+      clearAllKeys();
+    }
+  });
+
   setInterval(() => {
+    if (document.hidden) return; // freeze game state until tab is visible again
     update();
     sendUpdate();
     draw();
