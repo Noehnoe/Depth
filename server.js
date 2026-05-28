@@ -164,11 +164,14 @@ app.post('/api/admin/verify_pin', (req, res) => {
 });
 
 app.post('/api/admin/force_reload', (req, res) => {
-  const { token, pin } = req.body || {};
+  const { token, pin, message } = req.body || {};
   const r = checkAdminAndPin(token, pin);
   if (!r.ok) return res.status(r.status).json({ error: r.reason });
-  console.log(`[admin] ${r.user.username} broadcast force_reload`);
-  io.emit('force_reload', { by: r.user.username });
+  const msg = (typeof message === 'string' && message.trim())
+    ? message.trim().slice(0, 200)
+    : null;
+  console.log(`[admin] ${r.user.username} broadcast force_reload${msg ? ': ' + msg : ''}`);
+  io.emit('force_reload', { by: r.user.username, message: msg });
   res.json({ ok: true });
 });
 

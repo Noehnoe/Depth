@@ -909,9 +909,10 @@
       setTimeout(() => location.reload(), 50);
     });
     net.sock.on('force_reload', (info) => {
-      try {
-        alert('Server restart triggered' + (info && info.by ? ' by ' + info.by : '') + ' — reloading.');
-      } catch (e) {}
+      const adminName = (info && info.by) ? info.by.toUpperCase() : 'ADMIN';
+      const customMessage = info && info.message ? info.message : '';
+      const text = `YOU HAVE BEEN FORCE RELOADED BY ${adminName}` + (customMessage ? `\n\n${customMessage}` : '');
+      try { alert(text); } catch (e) {}
       setTimeout(() => location.reload(), 200);
     });
   }
@@ -3942,16 +3943,36 @@
     } catch (e) { console.error(e); }
   }
 
-  async function adminForceReload() {
+  // Preset reload messages — order matters (first 4 shown as buttons, last is CUSTOM)
+  const RELOAD_PRESETS = [
+    { label: 'UPDATE',      message: 'New update available — reload to get the latest!' },
+    { label: 'MAINTENANCE', message: 'Quick server maintenance — please wait a moment after reload.' },
+    { label: 'BUG FIX',     message: 'Bug fix deployed — reloading.' },
+    { label: 'EVENT',       message: 'Special event starting — reload to join!' },
+  ];
+
+  async function adminForceReload(message) {
     if (!auth.isAdmin || !auth.token || !adminPin) return;
-    if (!confirm('Force ALL players to reload? This kicks everyone back to the login.')) return;
+    const previewMsg = message || 'Server restart — reloading.';
+    if (!confirm(`Force ALL players to reload?\n\nMessage they'll see:\n"${previewMsg}"`)) return;
     try {
       await fetch('/api/admin/force_reload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: auth.token, pin: adminPin }),
+        body: JSON.stringify({
+          token: auth.token,
+          pin: adminPin,
+          message: message || undefined,
+        }),
       });
     } catch (e) { console.error(e); }
+  }
+
+  function adminForceReloadCustom() {
+    if (!auth.isAdmin || !auth.token || !adminPin) return;
+    const msg = prompt('Enter the message all players will see when reloaded:', 'Server update — please refresh!');
+    if (msg === null) return; // cancelled
+    adminForceReload(msg.trim() || 'Server reload requested.');
   }
 
   function leaveAdmin() {
@@ -4020,8 +4041,20 @@
       pixelText(`... and ${adminPlayers.length - maxVisibleRows} more`, W / 2, 386, 11, '#aaa', 'center');
     }
 
-    // force reload action
-    if (button(40, 432, W - 80, 36, '⚡ FORCE RELOAD ALL CLIENTS ⚡')) {
+    // force reload — pick a preset message (or CUSTOM... to type one)
+    pixelText('FORCE RELOAD WITH MESSAGE:', 50, 426, 11, '#ff8080');
+    const presetW = (W - 100 - 8 * 4) / 5; // 4 presets + custom = 5 buttons
+    for (let i = 0; i < RELOAD_PRESETS.length; i++) {
+      const bx = 50 + i * (presetW + 8);
+      if (button(bx, 442, presetW, 30, RELOAD_PRESETS[i].label)) {
+        adminForceReload(RELOAD_PRESETS[i].message);
+      }
+    }
+    if (button(50 + 4 * (presetW + 8), 442, presetW, 30, 'CUSTOM…')) {
+      adminForceReloadCustom();
+    }
+    // silent reload (no message) — just sends the default
+    if (button(50, 478, W - 100, 24, 'silent reload (no message)')) {
       adminForceReload();
     }
 
