@@ -1644,7 +1644,9 @@
       mode: 'surface',
       blink: p.blink,
     });
-    if (net.connected) pixelText('P1', p.x - camX + 8, p.y - 14, 10, C.helmet, 'center');
+    if (net.connected && auth.username) {
+      pixelText(auth.username.toUpperCase().slice(0, 6), p.x - camX + 8, p.y - 14, 10, C.helmet, 'center');
+    }
 
     drawParticles(camX, 0);
     drawSurfaceHUD();
