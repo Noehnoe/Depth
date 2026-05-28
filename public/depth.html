@@ -3407,27 +3407,74 @@
       return true;
     });
 
-    // RENDER 2-column list in the area below the search/filter row
+    // RENDER 2-column SCROLLABLE list
     const listTop = 244;
     const listH = H - listTop - 70;
-    const cardW = (W - 80) / 2;
+    const listLeft = 40;
+    const listRight = W - 56; // leave 16px for scrollbar
+    const cardW = (listRight - listLeft - 8) / 2;
     const cardH = 28;
-    const cardsPerCol = Math.max(1, Math.floor(listH / (cardH + 2)));
-    const maxCards = cardsPerCol * 2;
-    for (let i = 0; i < Math.min(filtered.length, maxCards); i++) {
-      const p = filtered[i];
-      const col = (i / cardsPerCol) | 0;
-      const row = i % cardsPerCol;
-      const x = 40 + col * (cardW + 8);
-      const y = listTop + row * (cardH + 2);
-      drawOreCard(x, y, cardW, cardH, p.type, () => machineAddInput(p.from, p.idx));
+    const cardStep = cardH + 2;
+    const cols = 2;
+    const rows = Math.ceil(filtered.length / cols);
+    const contentH = rows * cardStep;
+    const maxScroll = Math.max(0, contentH - listH);
+
+    // mouse wheel inside the list area scrolls
+    const inListArea = mouse.x >= listLeft - 8 && mouse.x <= listRight + 24 &&
+                       mouse.y >= listTop && mouse.y <= listTop + listH;
+    if (inListArea && mouse.wheelDelta !== 0) {
+      game.machine.scroll = (game.machine.scroll || 0) + mouse.wheelDelta;
     }
+    game.machine.scroll = Math.max(0, Math.min(maxScroll, game.machine.scroll || 0));
+    const scrollY = game.machine.scroll;
+
     if (filtered.length === 0) {
       const msg = pool.length === 0 ? '(you have no ores)' : '(no ores match the filter)';
       pixelText(msg, W / 2, listTop + 24, 12, '#666', 'center');
-    }
-    if (filtered.length > maxCards) {
-      pixelText(`... +${filtered.length - maxCards} more — narrow the filter to see all`, W / 2, listTop + listH - 8, 10, '#aaa', 'center');
+    } else {
+      // Clip rendering to viewport
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(listLeft - 2, listTop, listRight - listLeft + 4, listH);
+      ctx.clip();
+      for (let i = 0; i < filtered.length; i++) {
+        const p = filtered[i];
+        const col = i % cols;
+        const row = (i / cols) | 0;
+        const x = listLeft + col * (cardW + 8);
+        const y = listTop + row * cardStep - scrollY;
+        // skip cards entirely outside viewport
+        if (y + cardH < listTop || y > listTop + listH) continue;
+        drawOreCard(x, y, cardW, cardH, p.type, () => {
+          // only register clicks where the card is fully inside the viewport
+          if (y >= listTop && y + cardH <= listTop + listH) machineAddInput(p.from, p.idx);
+        });
+      }
+      ctx.restore();
+      // Scrollbar
+      if (maxScroll > 0) {
+        const sbX = listRight + 4;
+        const sbW = 8;
+        ctx.fillStyle = '#0a0a14';
+        ctx.fillRect(sbX, listTop, sbW, listH);
+        const thumbH = Math.max(24, listH * (listH / contentH));
+        const thumbY = listTop + (scrollY / maxScroll) * (listH - thumbH);
+        ctx.fillStyle = '#5a3aa0';
+        ctx.fillRect(sbX, thumbY, sbW, thumbH);
+        ctx.fillStyle = '#80c0ff';
+        ctx.fillRect(sbX, thumbY, sbW, 2);
+        // touch-friendly up/down arrows
+        ctx.fillStyle = '#1a1a24';
+        ctx.fillRect(sbX - 14, listTop, 12, 14);
+        ctx.fillRect(sbX - 14, listTop + listH - 14, 12, 14);
+        pixelText('^', sbX - 8, listTop + 2, 12, '#80c0ff', 'center');
+        pixelText('v', sbX - 8, listTop + listH - 13, 12, '#80c0ff', 'center');
+        const upH = mouse.x >= sbX - 14 && mouse.x <= sbX - 2 && mouse.y >= listTop && mouse.y <= listTop + 14;
+        const dnH = mouse.x >= sbX - 14 && mouse.x <= sbX - 2 && mouse.y >= listTop + listH - 14 && mouse.y <= listTop + listH;
+        if (upH && mouse.clicked) game.machine.scroll = Math.max(0, scrollY - cardStep * 3);
+        if (dnH && mouse.clicked) game.machine.scroll = Math.min(maxScroll, scrollY + cardStep * 3);
+      }
     }
 
     // money top right
