@@ -759,7 +759,11 @@
     connected: false,
     remotePlayers: {}, // socketId -> { x, y, depth, oxygen, carrying, alive }
     lastSent: 0,
-    lastInGame: false, // toggles player_active/inactive emits on transition
+    // Initial true assumes player_join just added us; the first sendUpdate
+    // tick from a non-game scene (e.g. menu) will then emit player_inactive
+    // to take us back out of the world. This is the trick that makes new
+    // clients hide themselves on menu screens.
+    lastInGame: true,
     playerOrder: [], // ordered socketIds (including own) — for stable house slot assignment
   };
 
