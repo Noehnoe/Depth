@@ -55,15 +55,18 @@
     min-height: 600px;
     background: #0a0712;
     border: 1px solid #1a1430;
-    display: flex;
     align-items: center;
     justify-content: center;
     color: #3a2c5a;
     font-size: 11px;
+    /* hidden until real AdSense ad slot IDs are wired in (or Auto Ads fills them) */
+    display: none;
   }
-  /* Hide side ads on narrow viewports where they'd squish the game */
+  /* When a real ad fills, show the column */
+  #adLeft:has(ins[data-ad-status="filled"]),
+  #adRight:has(ins[data-ad-status="filled"]) { display: flex; }
   @media (max-width: 1100px) {
-    #adLeft, #adRight { display: none; }
+    #adLeft, #adRight { display: none !important; }
   }
   #gameWrap {
     flex: 1 1 auto;
@@ -77,12 +80,17 @@
     background: #0a0712;
     border-top: 1px solid #1a1430;
     min-height: 90px;
-    display: flex;
     align-items: center;
     justify-content: center;
     color: #3a2c5a;
     font-size: 11px;
+    display: none; /* shown only when an ad fills */
   }
+  #adBottom:has(ins[data-ad-status="filled"]) { display: flex; }
+  /* Hide any unfilled or empty ins.adsbygoogle so no broken-image icon shows */
+  ins.adsbygoogle:not([data-ad-status]),
+  ins.adsbygoogle[data-ad-status="unfilled"],
+  ins.adsbygoogle:empty { display: none !important; }
   #siteFooter {
     background: #06030c;
     border-top: 1px solid #1a1430;
