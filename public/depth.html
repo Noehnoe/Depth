@@ -59,14 +59,10 @@
     justify-content: center;
     color: #3a2c5a;
     font-size: 11px;
-    /* hidden until real AdSense ad slot IDs are wired in (or Auto Ads fills them) */
-    display: none;
+    display: flex;
   }
-  /* When a real ad fills, show the column */
-  #adLeft:has(ins[data-ad-status="filled"]),
-  #adRight:has(ins[data-ad-status="filled"]) { display: flex; }
   @media (max-width: 1100px) {
-    #adLeft, #adRight { display: none !important; }
+    #adLeft, #adRight { display: flex !important; }
   }
   #gameWrap {
     flex: 1 1 auto;
@@ -84,9 +80,8 @@
     justify-content: center;
     color: #3a2c5a;
     font-size: 11px;
-    display: none; /* shown only when an ad fills */
+    display: flex;
   }
-  #adBottom:has(ins[data-ad-status="filled"]) { display: flex; }
   /* Hide any unfilled or empty ins.adsbygoogle so no broken-image icon shows */
   ins.adsbygoogle:not([data-ad-status]),
   ins.adsbygoogle[data-ad-status="unfilled"],
