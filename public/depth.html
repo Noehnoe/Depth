@@ -760,28 +760,31 @@
     if (dpadUp)    { setGamepadKey('w', true); setGamepadKey('arrowup', true); }
     if (dpadDown)  { setGamepadKey('s', true); setGamepadKey('arrowdown', true); }
 
-    // Y button (top face) = jump / space (primary action: grab ore, start game)
+    // Y (top face) = jump. A (bottom face) and X (left face) = collect ore.
+    // All three map to SPACE in the game's input system — Y feels like jump,
+    // X feels like the collect action because of the placement.
     const y = pad.buttons[3] && pad.buttons[3].pressed;
-    // A button (bottom face) also mapped to space — feels natural for jump
     const a = pad.buttons[0] && pad.buttons[0].pressed;
-    setGamepadKey(' ', y || a);
+    const x = pad.buttons[2] && pad.buttons[2].pressed;
+    setGamepadKey(' ', y || a || x);
 
-    // B button = back / leave (the 'b' key)
+    // B button (right face) = back / leave
     const b = pad.buttons[1] && pad.buttons[1].pressed;
     setGamepadKey('b', b);
 
-    // X button = chat opener ('t' key) when in a game scene
-    const x = pad.buttons[2] && pad.buttons[2].pressed;
-    if (x && !gamepad.heldKeys.has('_xprev')) {
-      gamepad.heldKeys.add('_xprev');
+    // R2 (right trigger, button index 7) = open chat. Edge-triggered so holding
+    // the trigger doesn't repeatedly re-open it.
+    const r2 = pad.buttons[7] && (pad.buttons[7].pressed || pad.buttons[7].value > 0.5);
+    if (r2 && !gamepad.heldKeys.has('_r2prev')) {
+      gamepad.heldKeys.add('_r2prev');
       const ae = document.activeElement;
       const inputFocused = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
       if (!inputFocused && auth.username && !chatOverlay.classList.contains('show')) {
         const okScenes = { surface:1, shaft:1, base:1, shop:1, menu:1, leaderboards:1, dead:1 };
         if (okScenes[game.scene]) chatOpen();
       }
-    } else if (!x) {
-      gamepad.heldKeys.delete('_xprev');
+    } else if (!r2) {
+      gamepad.heldKeys.delete('_r2prev');
     }
 
     // Start button (9) acts as 'b' for menu navigation back too
