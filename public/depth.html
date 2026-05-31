@@ -645,6 +645,9 @@
   // because the input swallows the keyup and the player keeps ascending forever.
   function clearAllKeys() {
     for (const k in keys) keys[k] = false;
+    // also let the gamepad poll re-detect anything currently held, so a stick still
+    // held during an overlay doesn't stay "stuck" off until the user lets go.
+    if (typeof gamepad !== 'undefined' && gamepad.heldKeys) gamepad.heldKeys.clear();
   }
   // Tab away / alt-tab: assume nothing is held when focus returns.
   window.addEventListener('blur', clearAllKeys);
@@ -669,6 +672,139 @@
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     keys[e.key.toLowerCase()] = false;
   });
+
+  // ---------- GAMEPAD / XBOX CONTROLLER SUPPORT ----------
+  // Standard Xbox mapping:
+  //   axes[0/1] = LEFT stick X/Y     axes[2/3] = RIGHT stick X/Y
+  //   buttons[0]=A  [1]=B  [2]=X  [3]=Y (top face)  [4]=LB [5]=RB
+  //   buttons[12..15] = D-pad up/down/left/right
+  // Per the user's request: right stick controls LEFT/RIGHT, left stick controls
+  // UP/DOWN, and the top face button (Y) is jump.
+  const gamepad = {
+    index: null,
+    connected: false,
+    heldKeys: new Set(), // tracks which keys the gamepad currently has held
+    indicatorTimer: 0,   // small popup when controller connects/disconnects
+    indicatorText: '',
+  };
+
+  window.addEventListener('gamepadconnected', (e) => {
+    gamepad.index = e.gamepad.index;
+    gamepad.connected = true;
+    gamepad.indicatorText = 'CONTROLLER CONNECTED: ' + (e.gamepad.id || '').slice(0, 32);
+    gamepad.indicatorTimer = 3;
+    console.log('[gamepad] connected:', e.gamepad.id);
+  });
+  window.addEventListener('gamepaddisconnected', (e) => {
+    if (gamepad.index === e.gamepad.index) {
+      gamepad.index = null;
+      gamepad.connected = false;
+      gamepad.indicatorText = 'CONTROLLER DISCONNECTED';
+      gamepad.indicatorTimer = 2;
+      // release any keys the gamepad was holding
+      gamepad.heldKeys.forEach(k => { keys[k] = false; });
+      gamepad.heldKeys.clear();
+      console.log('[gamepad] disconnected:', e.gamepad.id);
+    }
+  });
+
+  // Set or clear a key based on gamepad input. Tracks gamepad ownership of the
+  // key so we only clear it when the gamepad releases (won't fight keyboard).
+  function setGamepadKey(k, pressed) {
+    if (pressed) {
+      if (!gamepad.heldKeys.has(k)) {
+        gamepad.heldKeys.add(k);
+        if (!keys[k]) justPressed[k] = true;
+        keys[k] = true;
+      }
+    } else if (gamepad.heldKeys.has(k)) {
+      gamepad.heldKeys.delete(k);
+      keys[k] = false;
+    }
+  }
+
+  function pollGamepad() {
+    if (gamepad.indicatorTimer > 0) gamepad.indicatorTimer -= 1 / 20;
+    if (!gamepad.connected) return;
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pad = pads && pads[gamepad.index];
+    if (!pad) return;
+
+    const DEADZONE = 0.30;
+    // Read axes safely (controllers may report fewer than 4)
+    const lx = pad.axes[0] || 0;
+    const ly = pad.axes[1] || 0;
+    const rx = pad.axes[2] || 0;
+    const ry = pad.axes[3] || 0;
+
+    // RIGHT stick X = horizontal (left/right movement)
+    setGamepadKey('a',         rx < -DEADZONE);
+    setGamepadKey('arrowleft', rx < -DEADZONE);
+    setGamepadKey('d',         rx >  DEADZONE);
+    setGamepadKey('arrowright', rx >  DEADZONE);
+
+    // LEFT stick Y = vertical (up/down movement)
+    // (Negative Y is up on standard mapping)
+    setGamepadKey('w',         ly < -DEADZONE);
+    setGamepadKey('arrowup',   ly < -DEADZONE);
+    setGamepadKey('s',         ly >  DEADZONE);
+    setGamepadKey('arrowdown', ly >  DEADZONE);
+
+    // D-pad mirrors movement (digital alternative)
+    const dpadUp    = pad.buttons[12] && pad.buttons[12].pressed;
+    const dpadDown  = pad.buttons[13] && pad.buttons[13].pressed;
+    const dpadLeft  = pad.buttons[14] && pad.buttons[14].pressed;
+    const dpadRight = pad.buttons[15] && pad.buttons[15].pressed;
+    if (dpadLeft)  { setGamepadKey('a', true); setGamepadKey('arrowleft', true); }
+    if (dpadRight) { setGamepadKey('d', true); setGamepadKey('arrowright', true); }
+    if (dpadUp)    { setGamepadKey('w', true); setGamepadKey('arrowup', true); }
+    if (dpadDown)  { setGamepadKey('s', true); setGamepadKey('arrowdown', true); }
+
+    // Y button (top face) = jump / space (primary action: grab ore, start game)
+    const y = pad.buttons[3] && pad.buttons[3].pressed;
+    // A button (bottom face) also mapped to space — feels natural for jump
+    const a = pad.buttons[0] && pad.buttons[0].pressed;
+    setGamepadKey(' ', y || a);
+
+    // B button = back / leave (the 'b' key)
+    const b = pad.buttons[1] && pad.buttons[1].pressed;
+    setGamepadKey('b', b);
+
+    // X button = chat opener ('t' key) when in a game scene
+    const x = pad.buttons[2] && pad.buttons[2].pressed;
+    if (x && !gamepad.heldKeys.has('_xprev')) {
+      gamepad.heldKeys.add('_xprev');
+      const ae = document.activeElement;
+      const inputFocused = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+      if (!inputFocused && auth.username && !chatOverlay.classList.contains('show')) {
+        const okScenes = { surface:1, shaft:1, base:1, shop:1, menu:1, leaderboards:1, dead:1 };
+        if (okScenes[game.scene]) chatOpen();
+      }
+    } else if (!x) {
+      gamepad.heldKeys.delete('_xprev');
+    }
+
+    // Start button (9) acts as 'b' for menu navigation back too
+    const start = pad.buttons[9] && pad.buttons[9].pressed;
+    if (start) setGamepadKey('b', true);
+  }
+
+  function drawGamepadIndicator() {
+    if (gamepad.indicatorTimer <= 0) return;
+    const alpha = Math.min(1, gamepad.indicatorTimer);
+    ctx.globalAlpha = alpha;
+    const text = gamepad.indicatorText;
+    const tw = text.length * 7 + 24;
+    const tx = (W - tw) / 2;
+    const ty = H - 50;
+    ctx.fillStyle = 'rgba(10,20,30,0.9)';
+    ctx.fillRect(tx, ty, tw, 22);
+    ctx.fillStyle = '#80ff80';
+    ctx.fillRect(tx, ty, tw, 2);
+    ctx.fillRect(tx, ty + 20, tw, 2);
+    pixelText(text, W / 2, ty + 4, 11, '#80ff80', 'center');
+    ctx.globalAlpha = 1;
+  }
 
   const mouse = {
     x: 0, y: 0,
@@ -4792,6 +4928,9 @@
   function update() {
     game.timeAcc += DT;
 
+    // Poll the connected gamepad and translate to keys[] each tick
+    pollGamepad();
+
     passiveAcc += DT;
     if (passiveAcc >= 1) {
       const ticks = Math.floor(passiveAcc);
@@ -4857,6 +4996,7 @@
     drawDepthBar();
     drawCollectToast();
     drawChatMessages();
+    drawGamepadIndicator();
   }
 
   function drawTouchButtons() {
