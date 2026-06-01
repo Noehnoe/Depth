@@ -4854,6 +4854,75 @@
     { label: 'EVENT',       message: 'Special event starting — reload to join!' },
   ];
 
+  // Download every account + game progress as a JSON file. Used for migrating
+  // between hosting providers (Railway → Render, or backups).
+  async function adminExportData() {
+    if (!auth.isAdmin || !auth.token || !adminPin) return;
+    try {
+      const r = await fetch('/api/admin/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: auth.token, pin: adminPin }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert('Export failed: ' + (err.error || r.status));
+        return;
+      }
+      const data = await r.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.download = `depth-backup-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      alert(`Exported ${data.accountCount} accounts. Save this file and import it on the new host.`);
+    } catch (e) { alert('Export error: ' + e.message); }
+  }
+
+  // Restore from an exported JSON backup. Replaces all current accounts.
+  function adminImportData() {
+    if (!auth.isAdmin || !auth.token || !adminPin) return;
+    if (!confirm('Import a backup? This WIPES all current accounts on this server and replaces them with the file contents.')) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      try {
+        const text = await f.text();
+        const payload = JSON.parse(text);
+        if (!payload.users) throw new Error('not a Depth backup (missing "users" key)');
+        const r = await fetch('/api/admin/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: auth.token, pin: adminPin, payload }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          alert('Import failed: ' + (err.error || r.status));
+          return;
+        }
+        const result = await r.json();
+        alert(`Imported ${result.importedAccounts} accounts. The server has been refreshed — log in again.`);
+        // Our own session may have been invalidated; reload to be safe.
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        alert('Import error: ' + e.message);
+      } finally {
+        document.body.removeChild(input);
+      }
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+
   async function adminForceReload(message) {
     if (!auth.isAdmin || !auth.token || !adminPin) return;
     const previewMsg = message || 'Server restart — reloading.';
@@ -4957,16 +5026,21 @@
     if (button(50 + 4 * (presetW + 8), 442, presetW, 30, 'CUSTOM…')) {
       adminForceReloadCustom();
     }
-    // silent reload (no message) — just sends the default
-    if (button(50, 478, W - 100, 24, 'silent reload (no message)')) {
+    // silent reload (no message)
+    if (button(50, 478, W - 100, 22, 'silent reload (no message)')) {
       adminForceReload();
     }
 
+    // DATA MIGRATION row
+    pixelText('DATA BACKUP / RESTORE:', 50, 506, 11, '#ff8080');
+    if (button(50, 518, (W - 108) / 2, 28, 'EXPORT DATA')) adminExportData();
+    if (button(50 + (W - 108) / 2 + 8, 518, (W - 108) / 2, 28, 'IMPORT DATA')) adminImportData();
+
     // leave
-    if (button(W / 2 - 100, H - 58, 200, 34, 'LEAVE [B]')) leaveAdmin();
+    if (button(W / 2 - 100, H - 40, 200, 28, 'LEAVE [B]')) leaveAdmin();
     if (justPressed['b']) leaveAdmin();
 
-    pixelText('auto-refresh every 3s · PIN cleared on leave', W / 2, H - 14, 10, '#aa8080', 'center');
+    pixelText('auto-refresh every 3s · PIN cleared on leave', W / 2, H - 9, 10, '#aa8080', 'center');
   }
 
   function drawTitle() {

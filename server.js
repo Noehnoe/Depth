@@ -197,6 +197,52 @@ app.post('/api/admin/stats', (req, res) => {
   });
 });
 
+// Dump the entire users database (auth + game data) as JSON. Admin + PIN only.
+// Used for migrating between hosting providers.
+app.post('/api/admin/export', (req, res) => {
+  const { token, pin } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
+  console.log(`[admin] ${r.user.username} exported users.json (${Object.keys(users).length} accounts)`);
+  res.set('Cache-Control', 'no-store');
+  res.json({ users, exportedAt: Date.now(), accountCount: Object.keys(users).length });
+});
+
+// Replace the entire users database with uploaded JSON. DESTRUCTIVE — everyone
+// currently logged in gets kicked, sessions invalidated, and the file overwritten.
+app.post('/api/admin/import', express.json({ limit: '10mb' }), (req, res) => {
+  const { token, pin, payload } = req.body || {};
+  const r = checkAdminAndPin(token, pin);
+  if (!r.ok) return res.status(r.status).json({ error: r.reason });
+  if (!payload || typeof payload !== 'object' || !payload.users || typeof payload.users !== 'object') {
+    return res.status(400).json({ error: 'invalid_payload' });
+  }
+  // Sanity check: payload.users should look like { lowercase_name: { username, salt, hash, ... } }
+  const incoming = payload.users;
+  let valid = 0;
+  for (const k in incoming) {
+    const u = incoming[k];
+    if (u && typeof u.username === 'string' && typeof u.salt === 'string' && typeof u.hash === 'string') {
+      valid++;
+    }
+  }
+  if (valid === 0) return res.status(400).json({ error: 'no_valid_accounts' });
+
+  // Disconnect every live socket so they reconnect against the fresh dataset.
+  io.sockets.sockets.forEach((sock) => {
+    try { sock.emit('force_reload', { by: r.user.username, message: 'Data restored — reloading.' }); } catch (e) {}
+    try { sock.disconnect(true); } catch (e) {}
+  });
+  gameState.players = {};
+
+  users = incoming;
+  // run ensure on each loaded record so gameData is back-filled if missing
+  for (const key in users) ensureGameDataForLoadedUser(users[key]);
+  saveUsers();
+  console.log(`[admin] ${r.user.username} imported users.json (${Object.keys(users).length} accounts)`);
+  res.json({ ok: true, importedAccounts: Object.keys(users).length });
+});
+
 app.post('/api/admin/online_players', (req, res) => {
   const { token, pin } = req.body || {};
   const r = checkAdminAndPin(token, pin);
