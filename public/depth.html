@@ -28,7 +28,24 @@
     border-bottom: 1px solid #3a1c5a;
     padding: 8px 16px;
     text-align: center;
+    position: relative;
   }
+  #muteBtn {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1a1430;
+    border: 1px solid #5a3aa0;
+    color: #ffe080;
+    font: bold 11px "Courier New", monospace;
+    letter-spacing: 1px;
+    padding: 6px 10px;
+    cursor: pointer;
+    min-width: 64px;
+  }
+  #muteBtn:hover { background: #2a1c4a; }
+  #muteBtn.muted { color: #ff8080; border-color: #5a1c1c; }
   #siteHeader h1 {
     margin: 0;
     color: #ffe080;
@@ -474,6 +491,7 @@
 <header id="siteHeader">
   <h1>DEPTH</h1>
   <p>A free multiplayer pixel-art mining game · 45 ore tiers · convert · trade · compete</p>
+  <button id="muteBtn" type="button" aria-label="Toggle music">MUSIC ON</button>
 </header>
 
 <noscript>
@@ -672,6 +690,126 @@
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     keys[e.key.toLowerCase()] = false;
   });
+
+  // ---------- BACKGROUND MUSIC ----------
+  // Three looped tracks crossfade based on what scene the player is in:
+  //   menu  → boot, login, menu, leaderboards, title, admin
+  //   up    → surface, base, shop, machine, dead
+  //   down  → shaft
+  // Browsers block autoplay until the user interacts, so we wait for the first
+  // input event before starting playback.
+  const music = {
+    tracks: {},
+    current: null,
+    volume: 0.4,
+    muted: false,
+    unlocked: false,
+  };
+  (function initMusic() {
+    music.tracks.menu = new Audio('/music/menu.mp3');
+    music.tracks.up   = new Audio('/music/up.mp3');
+    music.tracks.down = new Audio('/music/down.mp3');
+    for (const k in music.tracks) {
+      music.tracks[k].loop = true;
+      music.tracks[k].volume = 0;
+      music.tracks[k].preload = 'auto';
+    }
+    try { music.muted = localStorage.getItem('depthMuted') === '1'; } catch (e) {}
+  })();
+
+  function fadeAudio(audio, target, durationMs, onComplete) {
+    const start = audio.volume;
+    const t0 = performance.now();
+    function step() {
+      const elapsed = performance.now() - t0;
+      const p = Math.min(1, elapsed / durationMs);
+      try { audio.volume = start + (target - start) * p; } catch (e) {}
+      if (p < 1) requestAnimationFrame(step);
+      else if (onComplete) onComplete();
+    }
+    step();
+  }
+
+  function setMusicCategory(category) {
+    if (!music.unlocked || music.muted) return;
+    if (music.current === category) return;
+    if (music.current) {
+      const old = music.tracks[music.current];
+      if (old) fadeAudio(old, 0, 600, () => { try { old.pause(); } catch (e) {} });
+    }
+    music.current = category;
+    if (category) {
+      const next = music.tracks[category];
+      if (next) {
+        try { next.currentTime = next.currentTime || 0; } catch (e) {}
+        next.play().then(() => fadeAudio(next, music.volume, 600))
+          .catch(() => {}); // autoplay blocked — will retry on next unlock
+      }
+    }
+  }
+
+  function unlockMusic() {
+    if (music.unlocked) return;
+    music.unlocked = true;
+    updateMusicForScene();
+  }
+
+  function toggleMute() {
+    music.muted = !music.muted;
+    try { localStorage.setItem('depthMuted', music.muted ? '1' : '0'); } catch (e) {}
+    const btn = document.getElementById('muteBtn');
+    if (btn) {
+      btn.textContent = music.muted ? 'MUSIC OFF' : 'MUSIC ON';
+      btn.classList.toggle('muted', music.muted);
+    }
+    if (music.muted) {
+      // fade out whatever's playing
+      if (music.current) {
+        const t = music.tracks[music.current];
+        if (t) fadeAudio(t, 0, 200, () => { try { t.pause(); } catch (e) {} });
+      }
+    } else if (music.unlocked) {
+      // restart the appropriate track for the current scene
+      const cat = currentMusicCategoryForScene();
+      music.current = null;
+      setMusicCategory(cat);
+    }
+  }
+
+  function currentMusicCategoryForScene() {
+    const s = game.scene;
+    if (s === 'shaft') return 'down';
+    if (s === 'surface' || s === 'base' || s === 'shop' || s === 'machine' || s === 'dead') return 'up';
+    return 'menu';
+  }
+
+  function updateMusicForScene() {
+    if (!music.unlocked || music.muted) return;
+    setMusicCategory(currentMusicCategoryForScene());
+  }
+
+  // Wire mute button + first-interaction unlock
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('muteBtn');
+    if (btn) {
+      btn.textContent = music.muted ? 'MUSIC OFF' : 'MUSIC ON';
+      btn.classList.toggle('muted', music.muted);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        unlockMusic();
+        toggleMute();
+      });
+    }
+  });
+
+  // Any input event from the user unlocks audio (browser autoplay policy).
+  function attachMusicUnlocker() {
+    const handler = () => { unlockMusic(); };
+    window.addEventListener('keydown', handler, { once: true });
+    window.addEventListener('mousedown', handler, { once: true });
+    window.addEventListener('touchstart', handler, { once: true });
+  }
+  attachMusicUnlocker();
 
   // ---------- GAMEPAD / XBOX CONTROLLER SUPPORT ----------
   // Standard Xbox mapping:
@@ -4933,6 +5071,9 @@
 
     // Poll the connected gamepad and translate to keys[] each tick
     pollGamepad();
+
+    // Switch background music if the scene changed
+    updateMusicForScene();
 
     passiveAcc += DT;
     if (passiveAcc >= 1) {
