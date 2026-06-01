@@ -1,0 +1,32 @@
+# Render Blueprint — deploys the Depth multiplayer mining game.
+# After connecting this repo to Render, this file provisions the web service
+# and a persistent disk for player accounts and progress automatically.
+
+services:
+  - type: web
+    name: depth
+    env: node
+    plan: starter            # change to 'free' if you want a free instance
+    region: oregon           # pick the region closest to your players
+    branch: main
+    buildCommand: npm install
+    startCommand: node server.js
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      # Persistent storage paths — point at the disk mounted below.
+      - key: USERS_PATH
+        value: /data/users.json
+      - key: DATA_PATH
+        value: /data/gamedata.json
+      # Admin credentials (set the real values in the Render dashboard, not here).
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PIN
+        sync: false
+    disk:
+      name: depth-data
+      mountPath: /data
+      sizeGB: 1

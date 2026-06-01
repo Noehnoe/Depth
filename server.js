@@ -729,7 +729,9 @@ setInterval(() => {
   broadcastState();
 }, 3000);
 
+// Render injects PORT (often 10000) and expects the app to bind to 0.0.0.0.
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`mine-game server listening on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+server.listen(PORT, HOST, () => {
+  console.log(`mine-game server listening on ${HOST}:${PORT}`);
 });
