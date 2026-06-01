@@ -13,6 +13,11 @@ const io = new Server(server, {
   pingInterval: 25000,
 });
 
+// Path-specific JSON limits: the admin import endpoint accepts up to 50 MB
+// (full user database). Everything else stays at 8 KB to keep abuse bounded.
+// IMPORTANT: the larger-limit middleware must be registered BEFORE the global
+// one, otherwise express.json sees the 8kb cap first and rejects with 413.
+app.use('/api/admin/import', express.json({ limit: '50mb' }));
 app.use(express.json({ limit: '8kb' }));
 // Serve the game directly at the bare root so the URL is just the domain
 // (no /depth.html suffix). /depth.html still works for anyone who has it bookmarked.
@@ -210,7 +215,7 @@ app.post('/api/admin/export', (req, res) => {
 
 // Replace the entire users database with uploaded JSON. DESTRUCTIVE — everyone
 // currently logged in gets kicked, sessions invalidated, and the file overwritten.
-app.post('/api/admin/import', express.json({ limit: '10mb' }), (req, res) => {
+app.post('/api/admin/import', (req, res) => {
   const { token, pin, payload } = req.body || {};
   const r = checkAdminAndPin(token, pin);
   if (!r.ok) return res.status(r.status).json({ error: r.reason });
