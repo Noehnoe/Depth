@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a1c5a"/>
+      <stop offset="55%" stop-color="#1a1430"/>
+      <stop offset="100%" stop-color="#06030c"/>
+    </linearGradient>
+    <linearGradient id="d" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe080"/>
+      <stop offset="100%" stop-color="#c08020"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)" rx="80"/>
+  <!-- subtle starfield -->
+  <g fill="#fff" opacity="0.7">
+    <rect x="60"  y="80"  width="4" height="4"/>
+    <rect x="120" y="140" width="3" height="3"/>
+    <rect x="380" y="60"  width="4" height="4"/>
+    <rect x="450" y="120" width="3" height="3"/>
+    <rect x="40"  y="200" width="3" height="3"/>
+    <rect x="80"  y="380" width="3" height="3"/>
+    <rect x="430" y="420" width="4" height="4"/>
+  </g>
+  <!-- the D, drawn with chunky pixel-styled stroke -->
+  <text x="256" y="370"
+        font-family="Impact, 'Arial Black', sans-serif"
+        font-size="340"
+        font-weight="900"
+        fill="url(#d)"
+        text-anchor="middle"
+        stroke="#1a0820"
+        stroke-width="16"
+        paint-order="stroke">D</text>
+  <!-- pickaxe accent -->
+  <g transform="translate(360 360) rotate(35)" fill="#a0a8c0" stroke="#1a0820" stroke-width="4">
+    <rect x="-4" y="-60" width="8" height="60"/>
+    <path d="M -32 -70 Q -16 -78 0 -68 Q 16 -78 32 -70 L 28 -56 Q 16 -64 0 -54 Q -16 -64 -28 -56 Z" fill="#c0c8d8"/>
+  </g>
+</svg>

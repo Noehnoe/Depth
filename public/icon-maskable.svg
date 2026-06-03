@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a1c5a"/>
+      <stop offset="55%" stop-color="#1a1430"/>
+      <stop offset="100%" stop-color="#06030c"/>
+    </linearGradient>
+    <linearGradient id="d" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe080"/>
+      <stop offset="100%" stop-color="#c08020"/>
+    </linearGradient>
+  </defs>
+  <!-- Full bleed for Android masking -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- Content kept inside the 80% safe zone (51px padding) -->
+  <text x="256" y="340"
+        font-family="Impact, 'Arial Black', sans-serif"
+        font-size="280"
+        font-weight="900"
+        fill="url(#d)"
+        text-anchor="middle"
+        stroke="#1a0820"
+        stroke-width="14"
+        paint-order="stroke">D</text>
+</svg>

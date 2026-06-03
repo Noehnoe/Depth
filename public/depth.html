@@ -6,7 +6,17 @@
 <meta name="description" content="Depth is a free browser-based multiplayer mining game. Dig deep through 45 ore tiers, upgrade your gear, convert ores into rare quality variants, and compete on global leaderboards with friends.">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1a1430">
-<!-- AdSense — replace ca-pub-2799549456506020 with your real publisher ID -->
+<!-- PWA: manifest + icons (also used by PWABuilder to generate the APK) -->
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DEPTH">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- AdSense -->
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2799549456506020" crossorigin="anonymous"></script>
 <style>
   html, body {
@@ -535,6 +545,15 @@
 </footer>
 
 <script src="/socket.io/socket.io.js"></script>
+<script>
+// Register the service worker so Android Chrome shows the "Install app" prompt
+// and PWABuilder can wrap the site as an APK.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
 <script>
 (() => {
   const canvas = document.getElementById('game');
