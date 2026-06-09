@@ -23,18 +23,99 @@
     margin: 0;
     padding: 0;
     background: #06030c;
-    height: 100%;
     width: 100%;
     font-family: "Courier New", monospace;
     color: #eee;
-    overflow: hidden;
   }
   body {
     display: flex;
     flex-direction: column;
+    min-height: 100vh;
+  }
+  /* Game area pins to viewport height so the canvas always fills the screen on load. */
+  #gameArea {
+    display: flex;
+    flex-direction: column;
     height: 100vh;
     height: 100dvh;
+    width: 100%;
+    flex-shrink: 0;
   }
+  /* Subtle "scroll down" hint that fades after first scroll */
+  #scrollHint {
+    position: fixed;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,8,20,0.7);
+    color: #ffe080;
+    padding: 4px 12px;
+    font: bold 11px "Courier New", monospace;
+    border: 1px solid #5a3aa0;
+    border-radius: 3px;
+    z-index: 7;
+    pointer-events: none;
+    transition: opacity 0.4s;
+  }
+  #scrollHint.hidden { opacity: 0; }
+  /* ACCOUNT overlay — proper HTML modal so inputs are guaranteed visible/clickable. */
+  #accountOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(6,3,12,0.92);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 12;
+    font-family: "Courier New", monospace;
+  }
+  #accountOverlay.show { display: flex; }
+  #accountCard {
+    width: min(420px, 92vw);
+    max-height: 92vh;
+    overflow-y: auto;
+    background: #1a1430;
+    border: 3px solid #5a3aa0;
+    box-shadow: 0 0 32px rgba(168,128,255,0.35);
+    padding: 22px 22px 18px;
+    color: #fff;
+    box-sizing: border-box;
+  }
+  #accountCard h2 { margin: 0 0 4px; color: #ffe080; font-size: 24px; letter-spacing: 4px; text-align: center; }
+  #accountCard .sub { text-align: center; color: #aaa8c8; font-size: 11px; margin-bottom: 18px; }
+  #accountCard .section { background: #0a0820; border: 1px solid #3a2c5a; padding: 12px; margin-bottom: 14px; }
+  #accountCard .section h3 { margin: 0 0 10px; color: #a880ff; font-size: 13px; letter-spacing: 2px; }
+  #accountCard label { display: block; color: #aaa8c8; font-size: 10px; letter-spacing: 1px; margin: 8px 0 4px; }
+  #accountCard input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #06030c;
+    color: #fff;
+    border: 2px solid #3a2c5a;
+    padding: 8px 10px;
+    font: 13px "Courier New", monospace;
+    outline: none;
+  }
+  #accountCard input:focus { border-color: #a880ff; }
+  #accountCard .currentInfo { color: #80c0ff; font-size: 11px; margin-top: 6px; }
+  #accountCard .currentInfo.warn { color: #ffaa60; }
+  #accountCard .btnRow { display: flex; gap: 8px; margin-top: 14px; }
+  #accountCard button {
+    flex: 1;
+    background: #3a1c5a;
+    color: #ffe080;
+    border: 2px solid #5a3aa0;
+    padding: 10px;
+    font: bold 13px "Courier New", monospace;
+    letter-spacing: 2px;
+    cursor: pointer;
+  }
+  #accountCard button.save { background: #1c5a3a; color: #80ff80; border-color: #3a8a5a; }
+  #accountCard button.save:hover { background: #2c7a4a; }
+  #accountCard button.back:hover { background: #4a2c6a; }
+  #accountStatus { text-align: center; font-size: 12px; margin-top: 10px; min-height: 14px; }
+  #accountStatus.ok { color: #80ff80; }
+  #accountStatus.err { color: #ff6060; }
   #siteHeader {
     background: linear-gradient(180deg, #1a1430 0%, #06030c 100%);
     border-bottom: 1px solid #3a1c5a;
@@ -502,6 +583,33 @@
   <span id="chatPrompt">SAY:</span>
   <input id="chatInput" type="text" maxlength="200" autocomplete="off" />
 </div>
+<div id="accountOverlay">
+  <div id="accountCard">
+    <h2>ACCOUNT</h2>
+    <div class="sub">signed in as <span id="accountUsername">?</span></div>
+
+    <div class="section">
+      <h3>CHANGE PASSWORD</h3>
+      <label for="acctCurPw">current password</label>
+      <input id="acctCurPw" type="password" autocomplete="current-password" maxlength="64" placeholder="required for any change">
+      <label for="acctNewPw">new password</label>
+      <input id="acctNewPw" type="password" autocomplete="new-password" maxlength="64" placeholder="leave blank to keep current">
+    </div>
+
+    <div class="section">
+      <h3>LINK EMAIL</h3>
+      <label for="acctEmail">email address</label>
+      <input id="acctEmail" type="email" autocomplete="email" maxlength="120" placeholder="leave blank to unlink">
+      <div id="acctEmailInfo" class="currentInfo"></div>
+    </div>
+
+    <div class="btnRow">
+      <button class="back" id="accountBack">BACK</button>
+      <button class="save" id="accountSaveBtn">SAVE</button>
+    </div>
+    <div id="accountStatus"></div>
+  </div>
+</div>
 <input id="machineSearch" type="text" placeholder="search ore name..." autocomplete="off" maxlength="32" />
 <div id="adminPinOverlay">
   <div id="adminPinCard">
@@ -530,6 +638,9 @@
   <div id="adminSpawnCount"></div>
   <div id="adminSpawnList"></div>
 </div>
+<!-- GAME AREA: pinned to 100vh so the game is always on-screen when you load. -->
+<div id="gameArea">
+
 <header id="siteHeader">
   <h1>DEPTH</h1>
   <p>A free multiplayer pixel-art mining game · 45 ore tiers · convert · trade · compete</p>
@@ -567,6 +678,10 @@
        data-ad-slot="0000000000"></ins>
   <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
 </div>
+
+</div><!-- /#gameArea -->
+
+<div id="scrollHint">↓ scroll for game info, tips, and ore guide ↓</div>
 
 <!-- Page content for SEO and AdSense crawler. Visible below the game on scroll. -->
 <section id="aboutSection" style="max-width:920px;margin:32px auto 0;padding:0 16px;color:#ddd;line-height:1.65;font-size:14px">
@@ -634,6 +749,17 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
+
+// Always start at the top so the game is visible — browsers otherwise remember the
+// previous scroll position which could land you in the middle of the SEO content.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+window.addEventListener('load', () => window.scrollTo(0, 0));
+
+// Fade the "scroll down" hint once the user actually scrolls.
+window.addEventListener('scroll', () => {
+  const hint = document.getElementById('scrollHint');
+  if (hint && window.scrollY > 20) hint.classList.add('hidden');
+}, { passive: true });
 </script>
 <script>
 (() => {
@@ -4669,147 +4795,124 @@ if ('serviceWorker' in navigator) {
     leaderboardLoading = false;
   }
 
-  // ---------- ACCOUNT SCREEN ----------
-  // HTML inputs sit on top of the canvas in this scene. Showing/hiding is managed
-  // via the .show class so they don't appear in other scenes.
-  const accountUI = (() => {
-    // create inputs lazily once, attach to body
-    const wrap = document.createElement('div');
-    wrap.id = 'accountInputs';
-    wrap.style.cssText = 'position:fixed;display:none;z-index:8;font-family:"Courier New",monospace';
-    wrap.innerHTML = `
-      <style>
-        #accountInputs.show { display: block; }
-        #accountInputs input {
-          background:#06030c;color:#fff;border:2px solid #3a2c5a;padding:6px 10px;
-          font:13px "Courier New",monospace;outline:none;width:280px;box-sizing:border-box;
-        }
-        #accountInputs input:focus { border-color:#a880ff; }
-      </style>
-      <input id="acctCurPw" type="password" placeholder="current password" maxlength="64" autocomplete="current-password">
-      <input id="acctNewPw" type="password" placeholder="new password (leave blank to skip)" maxlength="64" autocomplete="new-password">
-      <input id="acctEmail" type="email" placeholder="email (leave blank to unlink)" maxlength="120" autocomplete="email">
-    `;
-    document.body.appendChild(wrap);
-    return {
-      wrap,
-      curPw: wrap.querySelector('#acctCurPw'),
-      newPw: wrap.querySelector('#acctNewPw'),
-      email: wrap.querySelector('#acctEmail'),
-    };
-  })();
-  // stop key propagation so typing 'b' or 'd' doesn't move the player
-  [accountUI.curPw, accountUI.newPw, accountUI.email].forEach((el) => {
+  // ---------- ACCOUNT SCREEN (HTML modal) ----------
+  const accountOverlay = document.getElementById('accountOverlay');
+  const accountUsername = document.getElementById('accountUsername');
+  const acctCurPw = document.getElementById('acctCurPw');
+  const acctNewPw = document.getElementById('acctNewPw');
+  const acctEmail = document.getElementById('acctEmail');
+  const acctEmailInfo = document.getElementById('acctEmailInfo');
+  const accountSaveBtn = document.getElementById('accountSaveBtn');
+  const accountBackBtn = document.getElementById('accountBack');
+  const accountStatus = document.getElementById('accountStatus');
+
+  // Stop key propagation so typing letters doesn't move the player
+  [acctCurPw, acctNewPw, acctEmail].forEach((el) => {
     el.addEventListener('keydown', (e) => { e.stopPropagation(); });
     el.addEventListener('keyup', (e) => { e.stopPropagation(); });
   });
 
-  let accountMsg = ''; let accountErr = '';
-
   function openAccount() {
     refreshAuthMe().then(() => {
-      accountUI.curPw.value = '';
-      accountUI.newPw.value = '';
-      accountUI.email.value = auth.email || '';
-      accountMsg = ''; accountErr = '';
-      accountUI.wrap.classList.add('show');
-      positionAccountInputs();
+      accountUsername.textContent = auth.username || '?';
+      acctCurPw.value = '';
+      acctNewPw.value = '';
+      acctEmail.value = auth.email || '';
+      if (auth.email) {
+        acctEmailInfo.textContent = 'currently linked: ' + auth.email;
+        acctEmailInfo.classList.remove('warn');
+      } else {
+        acctEmailInfo.textContent = 'no email linked — required for password recovery';
+        acctEmailInfo.classList.add('warn');
+      }
+      accountStatus.textContent = '';
+      accountStatus.className = '';
+      accountOverlay.classList.add('show');
       game.scene = 'account';
+      setTimeout(() => acctCurPw.focus(), 30);
     });
   }
   function leaveAccount() {
-    accountUI.wrap.classList.remove('show');
-    accountUI.curPw.blur(); accountUI.newPw.blur(); accountUI.email.blur();
+    accountOverlay.classList.remove('show');
+    acctCurPw.blur(); acctNewPw.blur(); acctEmail.blur();
     game.scene = 'menu';
   }
-  function positionAccountInputs() {
-    const r = canvas.getBoundingClientRect();
-    const xScale = r.width / W, yScale = r.height / H;
-    function place(el, x, y) {
-      el.style.left = (r.left + x * xScale) + 'px';
-      el.style.top  = (r.top + y * yScale) + 'px';
-      el.style.transform = `scale(${yScale}) translateZ(0)`;
-      el.style.transformOrigin = 'top left';
-    }
-    accountUI.wrap.style.left = '0'; accountUI.wrap.style.top = '0';
-    // we'll set each input's position in pixel space relative to the canvas
-    // using fixed top-left coords applied per-input
-    accountUI.curPw.style.position = 'fixed';
-    accountUI.newPw.style.position = 'fixed';
-    accountUI.email.style.position = 'fixed';
-    place(accountUI.curPw, W / 2 - 140, 162);
-    place(accountUI.newPw, W / 2 - 140, 222);
-    place(accountUI.email, W / 2 - 140, 318);
-  }
-  window.addEventListener('resize', () => { if (game.scene === 'account') positionAccountInputs(); });
+  accountBackBtn.addEventListener('click', leaveAccount);
 
   async function accountSave() {
-    accountMsg = ''; accountErr = '';
-    const curPw = accountUI.curPw.value;
-    const newPw = accountUI.newPw.value;
-    const newEmail = accountUI.email.value.trim();
-    if (!curPw) { accountErr = 'enter your current password'; return; }
-    // password change
+    accountStatus.textContent = '';
+    accountStatus.className = '';
+    const curPw = acctCurPw.value;
+    const newPw = acctNewPw.value;
+    const newEmail = acctEmail.value.trim();
+    if (!curPw) {
+      accountStatus.textContent = 'enter your current password';
+      accountStatus.className = 'err';
+      return;
+    }
+    let msg = '';
+    accountSaveBtn.disabled = true;
     if (newPw) {
       const { ok, data } = await postJson('/api/change_password', {
         token: auth.token, currentPassword: curPw, newPassword: newPw,
       });
-      if (!ok) { accountErr = data.error || 'password change failed'; return; }
+      if (!ok) {
+        accountStatus.textContent = data.error || 'password change failed';
+        accountStatus.className = 'err';
+        accountSaveBtn.disabled = false;
+        return;
+      }
       auth.token = data.token;
       try { localStorage.setItem('depthAuth', JSON.stringify(auth)); } catch (e) {}
-      accountMsg = 'password changed.';
+      msg = 'password changed.';
     }
-    // email change (only if it differs from current)
     const currentEmail = (auth.email || '').toLowerCase();
     if (newEmail.toLowerCase() !== currentEmail) {
       const { ok, data } = await postJson('/api/change_email', {
         token: auth.token, currentPassword: curPw, email: newEmail || null,
       });
-      if (!ok) { accountErr = data.error || 'email update failed'; return; }
+      if (!ok) {
+        accountStatus.textContent = data.error || 'email update failed';
+        accountStatus.className = 'err';
+        accountSaveBtn.disabled = false;
+        return;
+      }
       auth.email = data.email;
-      accountMsg = (accountMsg ? accountMsg + ' ' : '') + (newEmail ? 'email linked.' : 'email unlinked.');
+      msg = (msg ? msg + ' ' : '') + (newEmail ? 'email linked.' : 'email unlinked.');
+      // refresh the info line
+      if (auth.email) {
+        acctEmailInfo.textContent = 'currently linked: ' + auth.email;
+        acctEmailInfo.classList.remove('warn');
+      } else {
+        acctEmailInfo.textContent = 'no email linked — required for password recovery';
+        acctEmailInfo.classList.add('warn');
+      }
     }
-    if (!accountMsg) accountMsg = 'nothing to change.';
-    accountUI.curPw.value = '';
-    accountUI.newPw.value = '';
+    if (!msg) msg = 'nothing to change.';
+    accountStatus.textContent = msg;
+    accountStatus.className = 'ok';
+    acctCurPw.value = '';
+    acctNewPw.value = '';
+    accountSaveBtn.disabled = false;
   }
+  accountSaveBtn.addEventListener('click', accountSave);
+
+  // Submit on Enter from any field
+  [acctCurPw, acctNewPw, acctEmail].forEach((el) => {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); accountSave(); }
+      if (e.key === 'Escape') { e.preventDefault(); leaveAccount(); }
+    });
+  });
 
   function drawAccountScreen() {
-    // background
+    // The overlay is HTML, but the canvas behind shows a simple background
     ctx.fillStyle = '#0a0820';
     ctx.fillRect(0, 0, W, H);
     for (let i = 0; i < 5; i++) {
       ctx.fillStyle = ['#0a0820', '#15123a', '#26204a', '#3a2c5a', '#5a3a6a'][i];
       ctx.fillRect(0, i * 60, W, 60);
     }
-    pixelText('ACCOUNT', W / 2, 30, 32, '#ffe080', 'center');
-    pixelText('signed in as ' + (auth.username || '?'), W / 2, 64, 12, C.textDim, 'center');
-
-    // CHANGE PASSWORD section
-    panel(W / 2 - 220, 96, 440, 162, '#15123a', '#a880ff', '#5a3aa0');
-    pixelText('CHANGE PASSWORD', W / 2 - 200, 106, 13, '#ffe080');
-    pixelText('current password', W / 2 - 200, 146, 11, C.textDim);
-    pixelText('new password', W / 2 - 200, 206, 11, C.textDim);
-
-    // LINK / EDIT EMAIL section
-    panel(W / 2 - 220, 272, 440, 130, '#15123a', '#80ff80', '#3a8a3a');
-    pixelText('LINK EMAIL', W / 2 - 200, 282, 13, '#80ff80');
-    pixelText('email (leave blank to unlink)', W / 2 - 200, 302, 11, C.textDim);
-    if (auth.email) {
-      pixelText('currently linked: ' + auth.email, W / 2 - 200, 372, 10, '#a0c8ff');
-    } else {
-      pixelText('no email linked — required for password recovery', W / 2 - 200, 372, 10, '#aa8080');
-    }
-
-    // SAVE button
-    if (button(W / 2 - 120, 414, 240, 36, 'SAVE CHANGES')) accountSave();
-
-    // status line
-    if (accountErr) pixelText(accountErr, W / 2, 458, 12, '#ff6060', 'center');
-    else if (accountMsg) pixelText(accountMsg, W / 2, 458, 12, '#80ff80', 'center');
-
-    // leave
-    if (button(W / 2 - 90, H - 50, 180, 32, 'BACK [B]')) leaveAccount();
     if (justPressed['b']) leaveAccount();
   }
 
@@ -5500,8 +5603,8 @@ if ('serviceWorker' in navigator) {
     if (game.scene !== 'base' && game.drag) game.drag = null;
     if (game.scene !== 'base' && game.visit) game.visit = null;
     if (game.scene !== 'machine' && game.machine) game.machine = null;
-    if (game.scene !== 'account' && accountUI.wrap.classList.contains('show')) {
-      accountUI.wrap.classList.remove('show');
+    if (game.scene !== 'account' && accountOverlay.classList.contains('show')) {
+      accountOverlay.classList.remove('show');
     }
 
     updateParticles();
