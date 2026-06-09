@@ -102,18 +102,30 @@ app.post('/api/register', (req, res) => {
   }
   const key = trimmed.toLowerCase();
   if (users[key]) return res.status(409).json({ error: 'username already taken' });
+  // Email is OPTIONAL. If provided, must be a valid format and unique.
+  let email = null;
+  if (typeof req.body.email === 'string' && req.body.email.trim()) {
+    email = req.body.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'invalid email format' });
+    }
+    if (findUserByEmail(email)) {
+      return res.status(409).json({ error: 'email already in use' });
+    }
+  }
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = hashPassword(password, salt);
   const token = makeToken();
   users[key] = {
     username: trimmed,
+    email,
     salt,
     hash,
     sessions: [{ token, expiresAt: Date.now() + SESSION_TTL_MS }],
     createdAt: Date.now(),
   };
   saveUsers();
-  console.log(`[register] ${trimmed}`);
+  console.log(`[register] ${trimmed}${email ? ' <' + email + '>' : ''}`);
   res.json({ token, username: trimmed, isAdmin: isAdminUser(users[key]) });
 });
 
@@ -148,7 +160,173 @@ app.post('/api/me', (req, res) => {
   const { token } = req.body || {};
   const u = findUserByToken(token);
   if (!u) return res.status(401).json({ error: 'invalid token' });
-  res.json({ username: u.username, isAdmin: isAdminUser(u) });
+  res.json({
+    username: u.username,
+    email: u.email || null,
+    isAdmin: isAdminUser(u),
+  });
+});
+
+// ---------- EMAIL (SMTP via nodemailer) ----------
+// Configure with SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM env vars.
+// If any are missing, password-reset codes are logged to console instead of being
+// emailed — keeps dev/staging usable without an SMTP account.
+let mailTransport = null;
+(function initMail() {
+  if (!process.env.SMTP_HOST) {
+    console.log('[mail] SMTP_HOST not set — password-reset codes will be logged to console');
+    return;
+  }
+  try {
+    const nodemailer = require('nodemailer');
+    mailTransport = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: process.env.SMTP_USER ? {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      } : undefined,
+    });
+    console.log(`[mail] SMTP transport ready (${process.env.SMTP_HOST})`);
+  } catch (e) {
+    console.error('[mail] failed to init transport:', e.message);
+  }
+})();
+
+async function sendMail({ to, subject, text, html }) {
+  if (!mailTransport) {
+    console.log(`[mail-stub] to=${to} subject="${subject}"\n${text}`);
+    return { ok: true, stub: true };
+  }
+  try {
+    await mailTransport.sendMail({
+      from: process.env.SMTP_FROM || 'DEPTH <noreply@depth.game>',
+      to, subject, text, html,
+    });
+    return { ok: true };
+  } catch (e) {
+    console.error('[mail] send error:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+function findUserByEmail(email) {
+  if (!email) return null;
+  const lower = String(email).toLowerCase();
+  for (const k in users) {
+    if (users[k].email && users[k].email.toLowerCase() === lower) return users[k];
+  }
+  return null;
+}
+
+// ---------- ACCOUNT MANAGEMENT ENDPOINTS ----------
+app.post('/api/change_password', async (req, res) => {
+  const { token, currentPassword, newPassword } = req.body || {};
+  const u = findUserByToken(token);
+  if (!u) return res.status(401).json({ error: 'invalid token' });
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+    return res.status(400).json({ error: 'both passwords required' });
+  }
+  if (hashPassword(currentPassword, u.salt) !== u.hash) {
+    return res.status(401).json({ error: 'current password incorrect' });
+  }
+  if (newPassword.length < 4 || newPassword.length > 64) {
+    return res.status(400).json({ error: 'new password must be 4-64 characters' });
+  }
+  u.salt = crypto.randomBytes(16).toString('hex');
+  u.hash = hashPassword(newPassword, u.salt);
+  // Invalidate all other sessions — current request stays valid since
+  // we don't touch the token here, but we re-issue it just to be safe.
+  const newToken = makeToken();
+  u.sessions = [{ token: newToken, expiresAt: Date.now() + SESSION_TTL_MS }];
+  saveUsers();
+  console.log(`[change_password] ${u.username}`);
+  res.json({ ok: true, token: newToken });
+});
+
+app.post('/api/change_email', async (req, res) => {
+  const { token, currentPassword, email } = req.body || {};
+  const u = findUserByToken(token);
+  if (!u) return res.status(401).json({ error: 'invalid token' });
+  if (typeof currentPassword !== 'string') {
+    return res.status(400).json({ error: 'password required' });
+  }
+  if (hashPassword(currentPassword, u.salt) !== u.hash) {
+    return res.status(401).json({ error: 'password incorrect' });
+  }
+  // null / empty unlinks. Otherwise validate.
+  let newEmail = null;
+  if (typeof email === 'string' && email.trim()) {
+    newEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      return res.status(400).json({ error: 'invalid email format' });
+    }
+    const existing = findUserByEmail(newEmail);
+    if (existing && existing.username !== u.username) {
+      return res.status(409).json({ error: 'email already in use' });
+    }
+  }
+  u.email = newEmail;
+  saveUsers();
+  console.log(`[change_email] ${u.username} -> ${newEmail || '(unlinked)'}`);
+  res.json({ ok: true, email: newEmail });
+});
+
+// Generate and send a reset code via email. Code is 6 digits, valid 15 min.
+app.post('/api/forgot_password', async (req, res) => {
+  const { email } = req.body || {};
+  if (typeof email !== 'string') return res.status(400).json({ error: 'email required' });
+  const u = findUserByEmail(email.trim());
+  // Return success either way to avoid leaking which emails are registered.
+  if (!u) {
+    console.log(`[forgot_password] unknown email ${email}`);
+    return res.json({ ok: true });
+  }
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  u.resetCode = code;
+  u.resetExpires = Date.now() + 15 * 60 * 1000;
+  saveUsers();
+  const text = `Your DEPTH password-reset code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you didn't request this, ignore this email.`;
+  await sendMail({
+    to: u.email,
+    subject: 'DEPTH password reset code',
+    text,
+    html: `<p>Your DEPTH password reset code is:</p><h2 style="font-family:monospace">${code}</h2><p>This code expires in 15 minutes. If you didn't request this, ignore this email.</p>`,
+  });
+  console.log(`[forgot_password] sent reset code to ${u.username} <${u.email}>`);
+  res.json({ ok: true });
+});
+
+app.post('/api/reset_password', (req, res) => {
+  const { email, code, newPassword } = req.body || {};
+  if (typeof email !== 'string' || typeof code !== 'string' || typeof newPassword !== 'string') {
+    return res.status(400).json({ error: 'email, code, and newPassword required' });
+  }
+  const u = findUserByEmail(email.trim());
+  if (!u || !u.resetCode || !u.resetExpires) {
+    return res.status(400).json({ error: 'invalid or expired code' });
+  }
+  if (Date.now() > u.resetExpires) {
+    delete u.resetCode; delete u.resetExpires;
+    saveUsers();
+    return res.status(400).json({ error: 'code expired — request a new one' });
+  }
+  if (String(code).trim() !== String(u.resetCode).trim()) {
+    return res.status(400).json({ error: 'incorrect code' });
+  }
+  if (newPassword.length < 4 || newPassword.length > 64) {
+    return res.status(400).json({ error: 'new password must be 4-64 characters' });
+  }
+  u.salt = crypto.randomBytes(16).toString('hex');
+  u.hash = hashPassword(newPassword, u.salt);
+  delete u.resetCode; delete u.resetExpires;
+  // Issue a fresh token and invalidate everything else.
+  const token = makeToken();
+  u.sessions = [{ token, expiresAt: Date.now() + SESSION_TTL_MS }];
+  saveUsers();
+  console.log(`[reset_password] ${u.username}`);
+  res.json({ ok: true, token, username: u.username, isAdmin: isAdminUser(u) });
 });
 
 // Admin: trigger a force-reload broadcast to every connected client.

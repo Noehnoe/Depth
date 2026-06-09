@@ -23,15 +23,17 @@
     margin: 0;
     padding: 0;
     background: #06030c;
-    min-height: 100%;
+    height: 100%;
     width: 100%;
     font-family: "Courier New", monospace;
     color: #eee;
+    overflow: hidden;
   }
   body {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
   }
   #siteHeader {
     background: linear-gradient(180deg, #1a1430 0%, #06030c 100%);
@@ -69,13 +71,14 @@
     font-size: 12px;
   }
   #mainStage {
-    flex: 1 0 auto;
+    flex: 1 1 0;
     display: flex;
     align-items: stretch;
     justify-content: center;
     gap: 12px;
     padding: 8px;
     min-height: 0;
+    overflow: hidden;
   }
   #adLeft, #adRight {
     flex: 0 0 160px;
@@ -90,6 +93,10 @@
   }
   @media (max-width: 1100px) {
     #adLeft, #adRight { display: flex !important; }
+  }
+  @media (max-width: 768px) {
+    #adLeft, #adRight { display: none !important; }
+    #mainStage { padding: 4px; gap: 0; }
   }
   #gameWrap {
     flex: 1 1 auto;
@@ -462,8 +469,33 @@
     <input id="userInput" type="text" autocomplete="username" maxlength="20" />
     <label for="passInput">PASSWORD</label>
     <input id="passInput" type="password" autocomplete="current-password" maxlength="64" />
+    <div id="emailRow" style="display:none">
+      <label for="emailInput">EMAIL <span style="color:#80ff80;font-size:10px">(RECOMMENDED)</span></label>
+      <input id="emailInput" type="email" autocomplete="email" maxlength="120" placeholder="for password recovery" />
+    </div>
     <button class="action" id="submitBtn">LOGIN</button>
+    <a id="forgotLink" href="#" style="display:block;text-align:center;margin-top:8px;color:#a0c0ff;font-size:11px;text-decoration:none">FORGOT PASSWORD?</a>
     <div id="loginErr"></div>
+
+    <!-- FORGOT PASSWORD flow (hidden until forgotLink is clicked) -->
+    <div id="forgotPanel" style="display:none">
+      <hr style="border:none;border-top:1px solid #3a2c5a;margin:14px 0">
+      <div style="text-align:center;color:#ffe080;font-size:13px;letter-spacing:2px;margin-bottom:6px">PASSWORD RESET</div>
+      <div id="forgotStep1">
+        <label for="forgotEmail">EMAIL ON ACCOUNT</label>
+        <input id="forgotEmail" type="email" maxlength="120" />
+        <button class="action" id="forgotSend">SEND CODE</button>
+      </div>
+      <div id="forgotStep2" style="display:none">
+        <label for="forgotCode">VERIFICATION CODE</label>
+        <input id="forgotCode" type="text" inputmode="numeric" maxlength="6" placeholder="6 digits" />
+        <label for="forgotNewPw">NEW PASSWORD</label>
+        <input id="forgotNewPw" type="password" maxlength="64" />
+        <button class="action" id="forgotReset">RESET PASSWORD</button>
+      </div>
+      <a id="backToLogin" href="#" style="display:block;text-align:center;margin-top:8px;color:#a0c0ff;font-size:11px;text-decoration:none">← BACK TO LOGIN</a>
+      <div id="forgotErr" style="color:#ff6060;font-size:12px;text-align:center;margin-top:8px;min-height:14px"></div>
+    </div>
   </div>
 </div>
 <div id="chatOverlay">
@@ -1091,15 +1123,28 @@ if ('serviceWorker' in navigator) {
   function input(name) { return keys[name]; }
 
   // ---------- AUTH ----------
-  const auth = { token: null, username: null, isAdmin: false };
+  const auth = { token: null, username: null, email: null, isAdmin: false };
 
   const loginOverlay = document.getElementById('loginOverlay');
   const tabLogin = document.getElementById('tabLogin');
   const tabRegister = document.getElementById('tabRegister');
   const userInput = document.getElementById('userInput');
   const passInput = document.getElementById('passInput');
+  const emailInput = document.getElementById('emailInput');
+  const emailRow = document.getElementById('emailRow');
   const submitBtn = document.getElementById('submitBtn');
   const loginErr = document.getElementById('loginErr');
+  const forgotLink = document.getElementById('forgotLink');
+  const forgotPanel = document.getElementById('forgotPanel');
+  const forgotStep1 = document.getElementById('forgotStep1');
+  const forgotStep2 = document.getElementById('forgotStep2');
+  const forgotEmail = document.getElementById('forgotEmail');
+  const forgotCode = document.getElementById('forgotCode');
+  const forgotNewPw = document.getElementById('forgotNewPw');
+  const forgotSend = document.getElementById('forgotSend');
+  const forgotReset = document.getElementById('forgotReset');
+  const forgotErr = document.getElementById('forgotErr');
+  const backToLogin = document.getElementById('backToLogin');
   let authMode = 'login'; // or 'register'
 
   function setAuthMode(mode) {
@@ -1108,10 +1153,71 @@ if ('serviceWorker' in navigator) {
     tabRegister.classList.toggle('active', mode === 'register');
     submitBtn.textContent = mode === 'login' ? 'LOGIN' : 'REGISTER';
     passInput.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+    emailRow.style.display = mode === 'register' ? 'block' : 'none';
     loginErr.textContent = '';
+    forgotLink.style.display = mode === 'login' ? 'block' : 'none';
   }
   tabLogin.addEventListener('click', () => setAuthMode('login'));
   tabRegister.addEventListener('click', () => setAuthMode('register'));
+
+  // ---- FORGOT PASSWORD FLOW ----
+  function showForgot() {
+    forgotPanel.style.display = 'block';
+    forgotStep1.style.display = 'block';
+    forgotStep2.style.display = 'none';
+    forgotErr.textContent = '';
+    forgotEmail.value = '';
+    forgotCode.value = '';
+    forgotNewPw.value = '';
+    setTimeout(() => forgotEmail.focus(), 30);
+  }
+  function hideForgot() {
+    forgotPanel.style.display = 'none';
+  }
+  forgotLink.addEventListener('click', (e) => { e.preventDefault(); showForgot(); });
+  backToLogin.addEventListener('click', (e) => { e.preventDefault(); hideForgot(); });
+
+  forgotSend.addEventListener('click', async () => {
+    const email = forgotEmail.value.trim();
+    if (!email) { forgotErr.textContent = 'enter your email'; return; }
+    forgotErr.textContent = '';
+    forgotSend.disabled = true;
+    const { ok, data } = await postJson('/api/forgot_password', { email });
+    forgotSend.disabled = false;
+    if (!ok) {
+      forgotErr.textContent = data.error || 'failed to send code';
+      return;
+    }
+    forgotStep1.style.display = 'none';
+    forgotStep2.style.display = 'block';
+    forgotErr.textContent = 'If that email is registered, a code was sent. Check your inbox.';
+    setTimeout(() => forgotCode.focus(), 30);
+  });
+
+  forgotReset.addEventListener('click', async () => {
+    const email = forgotEmail.value.trim();
+    const code = forgotCode.value.trim();
+    const newPassword = forgotNewPw.value;
+    if (!code || !newPassword) { forgotErr.textContent = 'enter the code and new password'; return; }
+    forgotErr.textContent = '';
+    forgotReset.disabled = true;
+    const { ok, data } = await postJson('/api/reset_password', { email, code, newPassword });
+    forgotReset.disabled = false;
+    if (!ok) {
+      forgotErr.textContent = data.error || 'reset failed';
+      return;
+    }
+    // log in with the new token
+    auth.token = data.token;
+    auth.username = data.username;
+    auth.isAdmin = !!data.isAdmin;
+    try { localStorage.setItem('depthAuth', JSON.stringify(auth)); } catch (e) {}
+    resetLocalEconomy();
+    hideForgot();
+    hideLogin();
+    game.scene = 'menu';
+    if (!net.sock) initNetwork();
+  });
 
   function showLogin() {
     if (typeof clearAllKeys === 'function') clearAllKeys();
@@ -1144,7 +1250,11 @@ if ('serviceWorker' in navigator) {
     }
     submitBtn.disabled = true;
     const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
-    const { ok, data } = await postJson(endpoint, { username, password });
+    const body = { username, password };
+    if (authMode === 'register' && emailInput && emailInput.value.trim()) {
+      body.email = emailInput.value.trim();
+    }
+    const { ok, data } = await postJson(endpoint, body);
     submitBtn.disabled = false;
     if (!ok) {
       loginErr.textContent = data.error || 'something went wrong';
@@ -1154,11 +1264,22 @@ if ('serviceWorker' in navigator) {
     auth.username = data.username;
     auth.isAdmin = !!data.isAdmin;
     try { localStorage.setItem('depthAuth', JSON.stringify(auth)); } catch (e) {}
-    // wipe any leftover client-side economy so we don't briefly show prior data
     resetLocalEconomy();
     hideLogin();
     game.scene = 'menu';
     if (!net.sock) initNetwork();
+    // After login, fetch fresh /api/me to pull email into auth state
+    refreshAuthMe();
+  }
+
+  async function refreshAuthMe() {
+    if (!auth.token) return;
+    const { ok, data } = await postJson('/api/me', { token: auth.token });
+    if (ok && data) {
+      auth.username = data.username || auth.username;
+      auth.email = data.email || null;
+      auth.isAdmin = !!data.isAdmin;
+    }
   }
 
   // Reset everything the server owns to defaults — game_state will populate real values shortly.
@@ -1192,6 +1313,7 @@ if ('serviceWorker' in navigator) {
     if (ok && data.username) {
       auth.token = stored.token;
       auth.username = data.username;
+      auth.email = data.email || null;
       auth.isAdmin = !!data.isAdmin;
       game.scene = 'menu';
       if (!net.sock) initNetwork();
@@ -4444,17 +4566,20 @@ if ('serviceWorker' in navigator) {
     pixelText(auth.username || 'miner', W / 2, 214, 20, '#fff', 'center');
 
     // buttons
-    if (button(W / 2 - 130, 250, 260, 50, 'START GAME')) {
+    if (button(W / 2 - 130, 244, 260, 44, 'START GAME')) {
       game.scene = 'title';
     }
-    if (button(W / 2 - 130, 308, 260, 36, 'LEADERBOARDS')) {
+    if (button(W / 2 - 130, 296, 260, 32, 'LEADERBOARDS')) {
       openLeaderboards();
     }
-    if (button(W / 2 - 130, 350, 260, 36, 'LOGOUT')) {
+    if (button(W / 2 - 130, 334, 260, 32, 'ACCOUNT')) {
+      openAccount();
+    }
+    if (button(W / 2 - 130, 372, 260, 32, 'LOGOUT')) {
       logout();
     }
     if (auth.isAdmin) {
-      if (button(W / 2 - 130, 392, 260, 32, 'ADMIN PANEL')) {
+      if (button(W / 2 - 130, 410, 260, 30, 'ADMIN PANEL')) {
         openAdminPin();
       }
     }
@@ -4493,6 +4618,150 @@ if ('serviceWorker' in navigator) {
       leaderboardCache = await r.json();
     } catch (e) { leaderboardCache = null; }
     leaderboardLoading = false;
+  }
+
+  // ---------- ACCOUNT SCREEN ----------
+  // HTML inputs sit on top of the canvas in this scene. Showing/hiding is managed
+  // via the .show class so they don't appear in other scenes.
+  const accountUI = (() => {
+    // create inputs lazily once, attach to body
+    const wrap = document.createElement('div');
+    wrap.id = 'accountInputs';
+    wrap.style.cssText = 'position:fixed;display:none;z-index:8;font-family:"Courier New",monospace';
+    wrap.innerHTML = `
+      <style>
+        #accountInputs.show { display: block; }
+        #accountInputs input {
+          background:#06030c;color:#fff;border:2px solid #3a2c5a;padding:6px 10px;
+          font:13px "Courier New",monospace;outline:none;width:280px;box-sizing:border-box;
+        }
+        #accountInputs input:focus { border-color:#a880ff; }
+      </style>
+      <input id="acctCurPw" type="password" placeholder="current password" maxlength="64" autocomplete="current-password">
+      <input id="acctNewPw" type="password" placeholder="new password (leave blank to skip)" maxlength="64" autocomplete="new-password">
+      <input id="acctEmail" type="email" placeholder="email (leave blank to unlink)" maxlength="120" autocomplete="email">
+    `;
+    document.body.appendChild(wrap);
+    return {
+      wrap,
+      curPw: wrap.querySelector('#acctCurPw'),
+      newPw: wrap.querySelector('#acctNewPw'),
+      email: wrap.querySelector('#acctEmail'),
+    };
+  })();
+  // stop key propagation so typing 'b' or 'd' doesn't move the player
+  [accountUI.curPw, accountUI.newPw, accountUI.email].forEach((el) => {
+    el.addEventListener('keydown', (e) => { e.stopPropagation(); });
+    el.addEventListener('keyup', (e) => { e.stopPropagation(); });
+  });
+
+  let accountMsg = ''; let accountErr = '';
+
+  function openAccount() {
+    refreshAuthMe().then(() => {
+      accountUI.curPw.value = '';
+      accountUI.newPw.value = '';
+      accountUI.email.value = auth.email || '';
+      accountMsg = ''; accountErr = '';
+      accountUI.wrap.classList.add('show');
+      positionAccountInputs();
+      game.scene = 'account';
+    });
+  }
+  function leaveAccount() {
+    accountUI.wrap.classList.remove('show');
+    accountUI.curPw.blur(); accountUI.newPw.blur(); accountUI.email.blur();
+    game.scene = 'menu';
+  }
+  function positionAccountInputs() {
+    const r = canvas.getBoundingClientRect();
+    const xScale = r.width / W, yScale = r.height / H;
+    function place(el, x, y) {
+      el.style.left = (r.left + x * xScale) + 'px';
+      el.style.top  = (r.top + y * yScale) + 'px';
+      el.style.transform = `scale(${yScale}) translateZ(0)`;
+      el.style.transformOrigin = 'top left';
+    }
+    accountUI.wrap.style.left = '0'; accountUI.wrap.style.top = '0';
+    // we'll set each input's position in pixel space relative to the canvas
+    // using fixed top-left coords applied per-input
+    accountUI.curPw.style.position = 'fixed';
+    accountUI.newPw.style.position = 'fixed';
+    accountUI.email.style.position = 'fixed';
+    place(accountUI.curPw, W / 2 - 140, 162);
+    place(accountUI.newPw, W / 2 - 140, 222);
+    place(accountUI.email, W / 2 - 140, 318);
+  }
+  window.addEventListener('resize', () => { if (game.scene === 'account') positionAccountInputs(); });
+
+  async function accountSave() {
+    accountMsg = ''; accountErr = '';
+    const curPw = accountUI.curPw.value;
+    const newPw = accountUI.newPw.value;
+    const newEmail = accountUI.email.value.trim();
+    if (!curPw) { accountErr = 'enter your current password'; return; }
+    // password change
+    if (newPw) {
+      const { ok, data } = await postJson('/api/change_password', {
+        token: auth.token, currentPassword: curPw, newPassword: newPw,
+      });
+      if (!ok) { accountErr = data.error || 'password change failed'; return; }
+      auth.token = data.token;
+      try { localStorage.setItem('depthAuth', JSON.stringify(auth)); } catch (e) {}
+      accountMsg = 'password changed.';
+    }
+    // email change (only if it differs from current)
+    const currentEmail = (auth.email || '').toLowerCase();
+    if (newEmail.toLowerCase() !== currentEmail) {
+      const { ok, data } = await postJson('/api/change_email', {
+        token: auth.token, currentPassword: curPw, email: newEmail || null,
+      });
+      if (!ok) { accountErr = data.error || 'email update failed'; return; }
+      auth.email = data.email;
+      accountMsg = (accountMsg ? accountMsg + ' ' : '') + (newEmail ? 'email linked.' : 'email unlinked.');
+    }
+    if (!accountMsg) accountMsg = 'nothing to change.';
+    accountUI.curPw.value = '';
+    accountUI.newPw.value = '';
+  }
+
+  function drawAccountScreen() {
+    // background
+    ctx.fillStyle = '#0a0820';
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = ['#0a0820', '#15123a', '#26204a', '#3a2c5a', '#5a3a6a'][i];
+      ctx.fillRect(0, i * 60, W, 60);
+    }
+    pixelText('ACCOUNT', W / 2, 30, 32, '#ffe080', 'center');
+    pixelText('signed in as ' + (auth.username || '?'), W / 2, 64, 12, C.textDim, 'center');
+
+    // CHANGE PASSWORD section
+    panel(W / 2 - 220, 96, 440, 162, '#15123a', '#a880ff', '#5a3aa0');
+    pixelText('CHANGE PASSWORD', W / 2 - 200, 106, 13, '#ffe080');
+    pixelText('current password', W / 2 - 200, 146, 11, C.textDim);
+    pixelText('new password', W / 2 - 200, 206, 11, C.textDim);
+
+    // LINK / EDIT EMAIL section
+    panel(W / 2 - 220, 272, 440, 130, '#15123a', '#80ff80', '#3a8a3a');
+    pixelText('LINK EMAIL', W / 2 - 200, 282, 13, '#80ff80');
+    pixelText('email (leave blank to unlink)', W / 2 - 200, 302, 11, C.textDim);
+    if (auth.email) {
+      pixelText('currently linked: ' + auth.email, W / 2 - 200, 372, 10, '#a0c8ff');
+    } else {
+      pixelText('no email linked — required for password recovery', W / 2 - 200, 372, 10, '#aa8080');
+    }
+
+    // SAVE button
+    if (button(W / 2 - 120, 414, 240, 36, 'SAVE CHANGES')) accountSave();
+
+    // status line
+    if (accountErr) pixelText(accountErr, W / 2, 458, 12, '#ff6060', 'center');
+    else if (accountMsg) pixelText(accountMsg, W / 2, 458, 12, '#80ff80', 'center');
+
+    // leave
+    if (button(W / 2 - 90, H - 50, 180, 32, 'BACK [B]')) leaveAccount();
+    if (justPressed['b']) leaveAccount();
   }
 
   function drawLeaderboards() {
@@ -5182,6 +5451,9 @@ if ('serviceWorker' in navigator) {
     if (game.scene !== 'base' && game.drag) game.drag = null;
     if (game.scene !== 'base' && game.visit) game.visit = null;
     if (game.scene !== 'machine' && game.machine) game.machine = null;
+    if (game.scene !== 'account' && accountUI.wrap.classList.contains('show')) {
+      accountUI.wrap.classList.remove('show');
+    }
 
     updateParticles();
 
@@ -5204,6 +5476,7 @@ if ('serviceWorker' in navigator) {
     if (game.scene === 'boot') drawBoot();
     else if (game.scene === 'menu') drawMenu();
     else if (game.scene === 'leaderboards') drawLeaderboards();
+    else if (game.scene === 'account') drawAccountScreen();
     else if (game.scene === 'admin') drawAdmin();
     else if (game.scene === 'title') drawTitle();
     else if (game.scene === 'surface') drawSurface();
