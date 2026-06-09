@@ -1,0 +1,36 @@
+# Fly.io app config. Change "app" below to a UNIQUE name (Fly app names are
+# global). After editing, run:  flyctl launch --no-deploy --copy-config  then
+# create the volume, then  flyctl deploy.
+app = "depth-noehnoe"          # <-- change me if this name is taken
+primary_region = "ord"          # ord = Chicago. Use "fra" (Frankfurt), "iad" (Virginia), "lhr" (London), etc.
+kill_signal = "SIGINT"
+kill_timeout = "5s"
+
+[build]
+  # Fly auto-detects Node.js from package.json — no Dockerfile needed.
+
+[env]
+  PORT = "8080"
+  HOST = "0.0.0.0"
+  USERS_PATH = "/data/users.json"
+  DATA_PATH = "/data/gamedata.json"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep one machine running so multiplayer doesn't cold-start when someone joins.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+# Mount the persistent volume holding users.json + gamedata.json.
+# Create it BEFORE first deploy:  flyctl volumes create depth_data --region ord --size 1
+[[mounts]]
+  source = "depth_data"
+  destination = "/data"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
