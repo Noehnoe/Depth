@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FAQ — DEPTH</title>
+<meta name="description" content="Frequently asked questions about DEPTH: account recovery, multiplayer, controls, system requirements, technical issues, and more.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { margin: 0; background: #06030c; color: #ddd; font-family: "Courier New", monospace; line-height: 1.65; padding: 32px 16px; font-size: 14px; }
+  main { max-width: 820px; margin: 0 auto; }
+  h1 { color: #ffe080; letter-spacing: 3px; }
+  h2 { color: #a880ff; margin-top: 28px; border-bottom: 1px solid #3a2c5a; padding-bottom: 6px; }
+  h3 { color: #80c0ff; margin-top: 22px; font-size: 16px; }
+  a { color: #80c0ff; }
+  ul { padding-left: 24px; }
+  .back { display: inline-block; margin-bottom: 24px; color: #80c0ff; }
+  footer { margin-top: 60px; padding-top: 16px; border-top: 1px solid #1a1430; text-align: center; color: #6a6080; font-size: 11px; }
+  footer a { color: #aaa8c8; margin: 0 8px; text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+  <a href="/" class="back">&larr; back to game</a>
+  <h1>Frequently Asked Questions</h1>
+
+  <h2>Accounts and login</h2>
+
+  <h3>How do I create an account?</h3>
+  <p>Click the REGISTER tab on the home screen, pick a username (3–20 characters, letters/numbers/underscore/dash), set a password, and optionally add an email. The email is strongly recommended because it is the only way to recover your password if you forget it.</p>
+
+  <h3>I forgot my password — what now?</h3>
+  <p>If you linked an email to your account, click the FORGOT PASSWORD? link on the login screen, enter your email, and check your inbox for a 6-digit code. Enter the code and your new password to log back in. If you did not link an email, the account cannot be recovered (the server only stores a one-way hash of your password, not the password itself).</p>
+
+  <h3>Can I change my password later?</h3>
+  <p>Yes. From the main menu, click ACCOUNT. You can change your password (requires your current one) and link or unlink an email.</p>
+
+  <h3>Can I have two accounts open at the same time?</h3>
+  <p>No. The server only allows one active session per account. If you log in from a second device or tab, the first session is automatically signed out for security.</p>
+
+  <h3>What happens to my progress if I close the tab?</h3>
+  <p>Your money, upgrades, placed ores, and unlocked tiers are all saved to the server in real time. Closing the tab does not lose anything; you can come back hours or days later and pick up exactly where you left off. Your hotbar (carried ores) is reset whenever you re-enter the shaft, however — so don't close the tab in the middle of a deep dive without surfacing first.</p>
+
+  <h2>Gameplay</h2>
+
+  <h3>How do I make money faster?</h3>
+  <p>Place your highest-value ores in your trove (house) — they generate passive income every second, even offline. Use the conversion machine to upgrade duplicate ores into Gold, Diamond, and Rainbow variants for much higher per-slot returns. The Rainbow variant is worth 10× the base value, so converting 12 base ores of the same type into one Rainbow takes one slot and pays 10× more than holding 12 of the base ore would (which would take 12 slots).</p>
+
+  <h3>I keep dying from suffocation. How do I stay underground longer?</h3>
+  <p>Buy oxygen tanks at the shop. Each adds 16 to your maximum oxygen capacity (default is 100). Also buy jet belts — they make your ascent much faster, so you waste less oxygen climbing back up. For very deep tiers, you'll want at least 10 oxygen tanks and 20+ jet belts.</p>
+
+  <h3>What is the maximum depth?</h3>
+  <p>The shaft goes down to 500,000 meters, where the rarest ore (Creation) appears. Below that, the shaft continues but no new ores spawn — there's nothing meaningful to find past that point.</p>
+
+  <h3>How do I open the chat?</h3>
+  <p>Press T while in any in-game scene (surface, shaft, house, shop, conversion machine, leaderboards, menu). A text input appears at the bottom. Type your message and press Enter to send it to all connected players. Press Escape to cancel.</p>
+
+  <h3>Can I visit my friend's house?</h3>
+  <p>Yes. On the surface, the row of houses to the right of the shop belongs to other connected players. Walk into any one and press UP at the door to enter their house in read-only mode. You can see their placed ores and their stats, but you cannot take or place anything.</p>
+
+  <h3>Do controllers work?</h3>
+  <p>Yes. Plug in any standard Xbox-compatible controller and press a button to wake it up. The right stick moves left/right, the left stick moves up/down (for jumping and entering buildings), Y or A or X buttons collect ores, B leaves a screen, and R2 opens the chat.</p>
+
+  <h3>Does the game work on mobile?</h3>
+  <p>Yes. On any touchscreen device, on-screen virtual buttons appear automatically for movement and ore collection. The game also supports being installed as a Progressive Web App — open the menu in Chrome on Android and tap "Install app" to add it to your home screen with a custom icon and no browser bar.</p>
+
+  <h2>Technical</h2>
+
+  <h3>The game keeps lagging or disconnecting.</h3>
+  <p>Most lag comes from server location: the game is hosted in one geographic region, and if you're far away, every WebSocket message takes hundreds of milliseconds to round-trip. Try a wired connection or a different network. If you're hosting your own copy, move the server to a region closer to you.</p>
+
+  <h3>The screen is black and I can't move.</h3>
+  <p>This usually means JavaScript is disabled or the game's connection to the server failed. Refresh the page, and make sure your browser allows JavaScript and WebSocket connections to the site.</p>
+
+  <h3>I'm stuck in the conversion machine and can't leave.</h3>
+  <p>This was an older bug. The fix is now live: there is an X button in the top-right corner of the machine screen, and tapping anywhere outside the search bar dismisses the on-screen keyboard. Update / refresh your browser to get the fix.</p>
+
+  <h3>Why is there an ad on the page?</h3>
+  <p>Ads support the game's hosting and ongoing development. The game itself is free and will always remain so. The ads are unobtrusive (positioned outside the gameplay area) and only appear after AdSense approves the site.</p>
+
+  <h2>Privacy and safety</h2>
+
+  <h3>What data does the game collect?</h3>
+  <p>Account details (username, password hash, optional email), game progress (money, upgrades, placed ores), and standard server logs (IP address and request timestamps for normal operation). Details are in the <a href="/privacy">Privacy Policy</a>.</p>
+
+  <h3>Can other players see my email?</h3>
+  <p>No. Email addresses are only used for password recovery and are never displayed anywhere in the game.</p>
+
+  <h3>How do I delete my account?</h3>
+  <p>Contact the operator via the GitHub repository linked in the footer. We will manually remove your account and all associated data.</p>
+
+  <p><a href="/" class="back">&larr; back to game</a></p>
+</main>
+<footer>
+  <a href="/">Home</a> · <a href="/guide">How to Play</a> · <a href="/ores">Ore Guide</a> · <a href="/faq">FAQ</a> · <a href="/about">About</a> · <a href="/privacy">Privacy</a>
+</footer>
+</body>
+</html>

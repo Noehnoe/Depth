@@ -23,6 +23,10 @@ app.use(express.json({ limit: '8kb' }));
 // (no /depth.html suffix). /depth.html still works for anyone who has it bookmarked.
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'depth.html')));
 app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
+app.get('/guide',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'guide.html')));
+app.get('/ores',    (req, res) => res.sendFile(path.join(__dirname, 'public', 'ores.html')));
+app.get('/faq',     (req, res) => res.sendFile(path.join(__dirname, 'public', 'faq.html')));
+app.get('/about',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'about.html')));
 // Background music — files live in /.music (hidden dir) and are exposed via
 // clean URLs. Sent with a long cache so they aren't re-downloaded on scene changes.
 const MUSIC_DIR = path.join(__dirname, '.music');

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>About — DEPTH</title>
+<meta name="description" content="About DEPTH, a free browser-based multiplayer pixel-art mining game built with vanilla JavaScript, HTML5 Canvas, Node.js, and Socket.io.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { margin: 0; background: #06030c; color: #ddd; font-family: "Courier New", monospace; line-height: 1.65; padding: 32px 16px; font-size: 14px; }
+  main { max-width: 820px; margin: 0 auto; }
+  h1 { color: #ffe080; letter-spacing: 3px; }
+  h2 { color: #a880ff; margin-top: 28px; border-bottom: 1px solid #3a2c5a; padding-bottom: 6px; }
+  a { color: #80c0ff; }
+  ul { padding-left: 24px; }
+  .back { display: inline-block; margin-bottom: 24px; color: #80c0ff; }
+  footer { margin-top: 60px; padding-top: 16px; border-top: 1px solid #1a1430; text-align: center; color: #6a6080; font-size: 11px; }
+  footer a { color: #aaa8c8; margin: 0 8px; text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+  <a href="/" class="back">&larr; back to game</a>
+  <h1>About DEPTH</h1>
+
+  <h2>What is DEPTH?</h2>
+  <p>
+    DEPTH is a free browser-based multiplayer mining game. The premise is simple: you start at the surface with no money and a small pickaxe, and you dig down. As you descend you find progressively rarer ores. Bring them back to your house to generate passive income, then use that income to buy upgrades that let you dig deeper, carry more, and stay underground longer. There are 45 distinct ore tiers spread across the entire 500,000-meter shaft, ranging from common Coal to the legendary Creation found only at the very bottom.
+  </p>
+  <p>
+    What makes DEPTH different from other mining games is the multiplayer dimension. The world is shared — other players appear in your game in real time. You can visit their houses, compete with them on global leaderboards, chat with anyone online, and watch their progress on the depth bar. Every player's account is persistent, so you can come back days or weeks later and find your progress exactly where you left it.
+  </p>
+
+  <h2>Story</h2>
+  <p>
+    There isn't a deep narrative — DEPTH is fundamentally a sandbox progression game. But there are little hints of one. The deeper you dig, the more cosmic the ore names become: from earthly Coal and Iron to Crystal and Diamond, then Quasar and Pulsar, then Eternity and Creation. As you push past the Singularity at depth 12,000 the visuals change too, with darker backgrounds, more glowing particles, and milestone messages that hint at something bigger waiting at the bottom. We won't spoil what (if anything) is down there at 500k — you'll have to dig and find out.
+  </p>
+
+  <h2>Technology</h2>
+  <p>
+    DEPTH is built with the absolute minimum possible technology stack. The client is a single HTML file with vanilla JavaScript and HTML5 Canvas — no game engine, no React, no frameworks, no build step. Every visual is drawn pixel by pixel from primitive shapes in the canvas API. The server is a Node.js process running Express for HTTP routes and Socket.io for real-time multiplayer state synchronization, plus a single JSON file on disk for account and progress storage. There is no database, no CDN, no Docker. The entire codebase fits in two files totaling under 6,000 lines.
+  </p>
+  <p>
+    The game runs in any modern browser on any device: desktops, laptops, phones, tablets, even some smart TVs. It supports keyboard, mouse, touchscreen, and gamepad input simultaneously. It can be installed as a Progressive Web App for a native app feel without an app store, and it has been wrapped as an Android APK using the Trusted Web Activity standard.
+  </p>
+
+  <h2>Features at a glance</h2>
+  <ul>
+    <li>45 ore tiers across 500,000 meters of shaft</li>
+    <li>Quality variants: Gold (1.25×), Diamond (2×), Rainbow (10×)</li>
+    <li>Conversion machine for combining identical ores into rarer variants</li>
+    <li>Multiplayer with chat, depth bar, leaderboards, and house visiting</li>
+    <li>Account system with optional email-based password recovery</li>
+    <li>Shop with stacking weight, jet belt, backpack, and oxygen tank upgrades</li>
+    <li>House expansion for unlocking more passive-income slots</li>
+    <li>Xbox controller support out of the box</li>
+    <li>Touchscreen support with on-screen controls</li>
+    <li>Looped background music that changes based on what scene you're in</li>
+    <li>Installable as a Progressive Web App on any modern OS</li>
+  </ul>
+
+  <h2>Free forever</h2>
+  <p>
+    DEPTH is and will remain completely free to play. There are no microtransactions, no premium currency, no battle passes, no NFTs. The only monetization is unobtrusive AdSense banners outside the gameplay area, which cover server hosting and development costs.
+  </p>
+  <p>
+    The source code is open and available on the GitHub repository linked at the bottom of every page. Bug reports, suggestions, and contributions are welcome via GitHub issues.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    For account-related issues (deletion requests, abuse reports, password problems if you didn't link an email), open an issue on the GitHub repository.
+  </p>
+
+  <p><a href="/" class="back">&larr; back to game</a></p>
+</main>
+<footer>
+  <a href="/">Home</a> · <a href="/guide">How to Play</a> · <a href="/ores">Ore Guide</a> · <a href="/faq">FAQ</a> · <a href="/about">About</a> · <a href="/privacy">Privacy</a>
+</footer>
+</body>
+</html>
